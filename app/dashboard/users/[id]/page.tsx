@@ -210,13 +210,10 @@ export default function UserDetails() {
                     </motion.button>
                   </div>
                 </div>
+              </div>
               </motion.div>
-
             {/* Stats and Activity */}
-            <motion.div 
-              className="lg:col-span-2 space-y-8"
-              variants={itemVariants}
-            >
+            <motion.div className="lg:col-span-2 space-y-8" variants={itemVariants}>
               {/* Stats Cards */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <motion.div 
@@ -238,6 +235,7 @@ export default function UserDetails() {
                       </div>
                     </div>
                   </div>
+                </div>
                 </motion.div>
 
                 <motion.div 
@@ -259,6 +257,7 @@ export default function UserDetails() {
                       </div>
                     </div>
                   </div>
+                </div>
                 </motion.div>
 
                 <motion.div 
@@ -301,8 +300,8 @@ export default function UserDetails() {
                       </div>
                     </div>
                   </div>
+                </div>
                 </motion.div>
-              </div>
 
               {/* Recent Activity */}
               <motion.div 
@@ -399,7 +398,6 @@ export default function UserDetails() {
                     </div>
                   </div>
                 </motion.div>
-              </div>
 
               {/* User's Shipments */}
               <motion.div 
