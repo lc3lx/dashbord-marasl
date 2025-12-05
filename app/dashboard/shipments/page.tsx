@@ -1,0 +1,776 @@
+"use client"
+import DashboardLayout from "@/components/dashboard/DashboardLayout"
+import { Truck, AlertCircle, Package, MapPin, Clock, Search, Filter, CheckCircle, XCircle, Loader2, Eye, Edit, Trash2, RefreshCw, RotateCcw, Mail, ChevronLeft, ChevronRight } from 'lucide-react'
+import { motion, AnimatePresence } from "framer-motion"
+import { useState } from "react"
+import useSWR from "swr"
+
+interface Shipment {
+  _id: string
+  trackingId: string
+  companyshipmentid: string
+  shapmentCompany: string
+  customerName: string
+  customerEmail?: string // إضافة حقل بريد العميل
+  destination: string
+  status: string
+  ordervalue: number
+  totalprice: number
+  createdAt: string
+}
+
+const fetcher = async (url: string) => {
+  console.log("[v0] Fetching shipments from API:", url)
+
+  const token = typeof window !== "undefined" ? localStorage.getItem("authToken") : null
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+  }
+  if (token) {
+    headers["x-auth-token"] = token
+    headers["Authorization"] = `Bearer ${token}`
+  }
+
+  const response = await fetch(url, {
+    method: "GET",
+    headers,
+    credentials: "include",
+  })
+
+  if (!response.ok) {
+    const error = await response.json()
+    console.error("[v0] Failed to fetch shipments:", error)
+    throw new Error(error.message || error.error || "فشل في تحميل الشحنات")
+  }
+
+  const data = await response.json()
+  console.log("[v0] Successfully fetched shipments:", Array.isArray(data) ? data.length : "unknown count", "items")
+
+  return data
+}
+
+export default function ShipmentsPage() {
+  const { data, error, isLoading, mutate } = useSWR("/api/shipments", fetcher, {
+    refreshInterval: 30000, // Auto-refresh every 30 seconds
+    revalidateOnFocus: true, // Refresh when window regains focus
+    revalidateOnReconnect: true, // Refresh when reconnecting
+  })
+
+  const [searchTerm, setSearchTerm] = useState("")
+  const [statusFilter, setStatusFilter] = useState<string>("all")
+  const [selectedShipment, setSelectedShipment] = useState<Shipment | null>(null)
+  const [showDetailsModal, setShowDetailsModal] = useState(false)
+  const [showEditModal, setShowEditModal] = useState(false)
+  const [showDeleteModal, setShowDeleteModal] = useState(false)
+  const [editStatus, setEditStatus] = useState("")
+  const [isSubmitting, setIsSubmitting] = useState(false)
+  const [isRefreshing, setIsRefreshing] = useState(false)
+  const [currentPage, setCurrentPage] = useState(1)
+  const [itemsPerPage, setItemsPerPage] = useState(10)
+
+  const shipments: Shipment[] = Array.isArray(data) ? data : data?.data || data?.shipments || []
+
+  const filteredShipments = shipments.filter((shipment) => {
+    const matchesSearch =
+      shipment.trackingId?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      shipment.customerName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      shipment.destination?.toLowerCase().includes(searchTerm.toLowerCase())
+
+    const matchesStatus = statusFilter === "all" || shipment.status === statusFilter
+
+    return matchesSearch && matchesStatus
+  })
+
+  const totalPages = Math.ceil(filteredShipments.length / itemsPerPage)
+  const startIndex = (currentPage - 1) * itemsPerPage
+  const endIndex = startIndex + itemsPerPage
+  const paginatedShipments = filteredShipments.slice(startIndex, endIndex)
+
+  const handleRefresh = async () => {
+    setIsRefreshing(true)
+    console.log("[v0] Manually refreshing shipments data...")
+    await mutate()
+    setIsRefreshing(false)
+  }
+
+  const handleViewDetails = (shipment: Shipment) => {
+    setSelectedShipment(shipment)
+    setShowDetailsModal(true)
+  }
+
+  const handleEditStatus = (shipment: Shipment) => {
+    setSelectedShipment(shipment)
+    setEditStatus(shipment.status)
+    setShowEditModal(true)
+  }
+
+  const handleDeleteShipment = (shipment: Shipment) => {
+    setSelectedShipment(shipment)
+    setShowDeleteModal(true)
+  }
+
+  const handleUpdateStatus = async () => {
+    if (!selectedShipment) return
+
+    setIsSubmitting(true)
+    try {
+      const token = typeof window !== "undefined" ? localStorage.getItem("authToken") : null
+      const headers: Record<string, string> = {
+        "Content-Type": "application/json",
+      }
+      if (token) {
+        headers["x-auth-token"] = token
+        headers["Authorization"] = `Bearer ${token}`
+      }
+
+      const response = await fetch(`/api/proxy/api/admin/shipments/${selectedShipment._id}`, {
+        method: "PATCH",
+        headers,
+        credentials: "include",
+        body: JSON.stringify({ status: editStatus }),
+      })
+
+      if (response.ok) {
+        await mutate()
+        setShowEditModal(false)
+        setSelectedShipment(null)
+      } else {
+        const error = await response.json()
+        alert(error.message || "فشل في تحديث الحالة")
+      }
+    } catch (error) {
+      console.error("Error updating status:", error)
+      alert("حدث خطأ أثناء تحديث الحالة")
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
+
+  const handleConfirmDelete = async () => {
+    if (!selectedShipment) return
+
+    setIsSubmitting(true)
+    try {
+      const token = typeof window !== "undefined" ? localStorage.getItem("authToken") : null
+      const headers: Record<string, string> = {
+        "Content-Type": "application/json",
+      }
+      if (token) {
+        headers["x-auth-token"] = token
+        headers["Authorization"] = `Bearer ${token}`
+      }
+
+      const response = await fetch(`/api/proxy/api/admin/shipments/${selectedShipment._id}`, {
+        method: "DELETE",
+        headers,
+        credentials: "include",
+      })
+
+      if (response.ok) {
+        await mutate()
+        setShowDeleteModal(false)
+        setSelectedShipment(null)
+      } else {
+        const error = await response.json()
+        alert(error.message || "فشل في حذف الشحنة")
+      }
+    } catch (error) {
+      console.error("Error deleting shipment:", error)
+      alert("حدث خطأ أثناء حذف الشحنة")
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
+
+  const getStatusBadge = (status: string) => {
+    const statusConfig: Record<string, { color: string; icon: any; label: string }> = {
+      "قيد الانتظار": { color: "bg-yellow-100 text-yellow-700 border-yellow-200", icon: Clock, label: "قيد الانتظار" },
+      "قيد التوصيل": { color: "bg-blue-100 text-blue-700 border-blue-200", icon: Truck, label: "قيد التوصيل" },
+      "تم التسليم": { color: "bg-green-100 text-green-700 border-green-200", icon: CheckCircle, label: "تم التسليم" },
+      ملغي: { color: "bg-red-100 text-red-700 border-red-200", icon: XCircle, label: "ملغي" },
+      "قيد المعالجة": {
+        color: "bg-purple-100 text-purple-700 border-purple-200",
+        icon: Package,
+        label: "قيد المعالجة",
+      },
+      راجع: {
+        color: "bg-orange-100 text-orange-700 border-orange-200",
+        icon: RotateCcw,
+        label: "راجع",
+      },
+    }
+
+    const config = statusConfig[status] || statusConfig["قيد الانتظار"]
+    const Icon = config.icon
+
+    return (
+      <span
+        className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-sm font-medium border ${config.color}`}
+      >
+        <Icon className="w-4 h-4" />
+        {config.label}
+      </span>
+    )
+  }
+
+  return (
+    <DashboardLayout>
+      <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-100 p-6">
+        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="space-y-6">
+          {/* Header */}
+          <div className="bg-white/90 backdrop-blur-sm rounded-2xl p-6 shadow-lg border border-white/20">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-4">
+                <div className="w-14 h-14 bg-gradient-to-br from-emerald-500 to-teal-600 rounded-xl flex items-center justify-center shadow-lg">
+                  <Truck className="w-7 h-7 text-white" />
+                </div>
+                <div>
+                  <h1 className="text-3xl font-bold text-gray-900">إدارة الشحنات</h1>
+                  <p className="text-gray-500">متابعة وإدارة الشحنات والتوصيل</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-4">
+                <motion.button
+                  whileHover={{ scale: 1.05 }}
+                  whileTap={{ scale: 0.95 }}
+                  onClick={handleRefresh}
+                  disabled={isRefreshing || isLoading}
+                  className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-200 rounded-xl hover:bg-gray-50 transition-colors disabled:opacity-50"
+                  title="تحديث البيانات"
+                >
+                  <RefreshCw className={`w-5 h-5 text-emerald-600 ${isRefreshing ? "animate-spin" : ""}`} />
+                  <span className="text-sm font-medium text-gray-700">تحديث</span>
+                </motion.button>
+                {!isLoading && !error && (
+                  <div className="bg-gradient-to-r from-emerald-500 to-teal-600 text-white px-6 py-3 rounded-xl shadow-lg">
+                    <div className="text-sm font-medium">إجمالي الشحنات</div>
+                    <div className="text-2xl font-bold">{shipments.length}</div>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-white/90 backdrop-blur-sm rounded-2xl p-6 shadow-lg border border-white/20">
+            <div className="flex flex-col md:flex-row gap-4">
+              <div className="flex-1 relative">
+                <Search className="absolute right-4 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
+                <input
+                  type="text"
+                  placeholder="البحث برقم التتبع، اسم العميل، أو الوجهة..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="w-full pr-12 pl-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
+                />
+              </div>
+              <div className="flex items-center gap-2">
+                <Filter className="text-gray-400 w-5 h-5" />
+                <select
+                  value={statusFilter}
+                  onChange={(e) => setStatusFilter(e.target.value)}
+                  className="px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
+                >
+                  <option value="all">جميع الحالات</option>
+                  <option value="قيد الانتظار">قيد الانتظار</option>
+                  <option value="قيد المعالجة">قيد المعالجة</option>
+                  <option value="قيد التوصيل">قيد التوصيل</option>
+                  <option value="تم التسليم">تم التسليم</option>
+                  <option value="راجع">راجع</option>
+                  <option value="ملغي">ملغي</option>
+                </select>
+              </div>
+            </div>
+          </div>
+
+          {isLoading && (
+            <div className="bg-white/90 backdrop-blur-sm rounded-2xl p-12 shadow-lg border border-white/20">
+              <div className="flex flex-col items-center justify-center text-center space-y-4">
+                <Loader2 className="w-12 h-12 text-emerald-600 animate-spin" />
+                <p className="text-gray-600">جاري تحميل جميع الشحنات من الخادم...</p>
+                <p className="text-sm text-gray-400">يتم جلب البيانات من API</p>
+              </div>
+            </div>
+          )}
+
+          {error && (
+            <div className="bg-white/90 backdrop-blur-sm rounded-2xl p-12 shadow-lg border border-white/20">
+              <div className="flex flex-col items-center justify-center text-center space-y-4">
+                <div className="w-20 h-20 bg-red-100 rounded-full flex items-center justify-center">
+                  <AlertCircle className="w-10 h-10 text-red-600" />
+                </div>
+                <h2 className="text-2xl font-bold text-gray-900">حدث خطأ في تحميل البيانات</h2>
+                <p className="text-gray-600 max-w-md">
+                  {error?.message || "فشل الاتصال بالخادم. يرجى المحاولة مرة أخرى لاحقاً."}
+                </p>
+                <button
+                  onClick={handleRefresh}
+                  className="mt-4 px-6 py-3 bg-emerald-600 text-white rounded-xl hover:bg-emerald-700 transition-colors"
+                >
+                  إعادة المحاولة
+                </button>
+              </div>
+            </div>
+          )}
+
+          {!isLoading && !error && filteredShipments.length === 0 && (
+            <div className="bg-white/90 backdrop-blur-sm rounded-2xl p-12 shadow-lg border border-white/20">
+              <div className="flex flex-col items-center justify-center text-center space-y-4">
+                <Package className="w-16 h-16 text-gray-400" />
+                <h2 className="text-xl font-bold text-gray-900">لا توجد شحنات</h2>
+                <p className="text-gray-600">
+                  {searchTerm || statusFilter !== "all"
+                    ? "لم يتم العثور على أي شحنات تطابق معايير البحث"
+                    : "لا توجد شحنات في النظام حالياً"}
+                </p>
+                {shipments.length > 0 && (
+                  <p className="text-sm text-gray-500">
+                    تم جلب {shipments.length} شحنة من API ولكن لا يوجد تطابق مع الفلتر
+                  </p>
+                )}
+              </div>
+            </div>
+          )}
+
+          {!isLoading && !error && filteredShipments.length > 0 && (
+            <>
+              <div className="bg-blue-50 border border-blue-200 rounded-xl p-4">
+                <p className="text-blue-800 text-sm">
+                  <strong>تم جلب {shipments.length} شحنة من API</strong>
+                  {filteredShipments.length !== shipments.length && (
+                    <span> • عرض {filteredShipments.length} بعد التصفية</span>
+                  )}
+                </p>
+              </div>
+
+              <div className="bg-white/90 backdrop-blur-sm rounded-2xl shadow-lg border border-white/20 overflow-hidden">
+                {/* Pagination Header */}
+                <div className="border-b border-gray-200 px-6 py-4 bg-gray-50">
+                  <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
+                    <div className="text-sm text-gray-600">
+                      عرض <span className="font-semibold text-gray-900">{startIndex + 1}</span> إلى{" "}
+                      <span className="font-semibold text-gray-900">{Math.min(endIndex, filteredShipments.length)}</span> من{" "}
+                      <span className="font-semibold text-gray-900">{filteredShipments.length}</span> شحنة
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      <label className="text-sm text-gray-600">عدد الصفوف:</label>
+                      <select
+                        value={itemsPerPage}
+                        onChange={(e) => {
+                          setItemsPerPage(Number(e.target.value))
+                          setCurrentPage(1)
+                        }}
+                        className="px-3 py-1.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
+                      >
+                        <option value={5}>5</option>
+                        <option value={10}>10</option>
+                        <option value={20}>20</option>
+                        <option value={50}>50</option>
+                        <option value={100}>100</option>
+                      </select>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => setCurrentPage(1)}
+                        disabled={currentPage === 1}
+                        className="px-3 py-2 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                      >
+                        الأول
+                      </button>
+                      <button
+                        onClick={() => setCurrentPage(currentPage - 1)}
+                        disabled={currentPage === 1}
+                        className="p-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                      >
+                        <ChevronRight className="w-5 h-5" />
+                      </button>
+
+                      <div className="flex items-center gap-1">
+                        {Array.from({ length: totalPages }, (_, i) => i + 1)
+                          .filter((page) => {
+                            return (
+                              page === 1 ||
+                              page === totalPages ||
+                              (page >= currentPage - 1 && page <= currentPage + 1)
+                            )
+                          })
+                          .map((page, index, array) => {
+                            const showEllipsis = index > 0 && page - array[index - 1] > 1
+                            return (
+                              <div key={page} className="flex items-center gap-1">
+                                {showEllipsis && (
+                                  <span className="px-2 text-gray-500">...</span>
+                                )}
+                                <button
+                                  onClick={() => setCurrentPage(page)}
+                                  className={`min-w-[2.5rem] px-3 py-2 rounded-lg text-sm font-medium transition-all ${
+                                    currentPage === page
+                                      ? "bg-gradient-to-r from-emerald-500 to-teal-600 text-white shadow-lg"
+                                      : "border border-gray-300 text-gray-700 hover:bg-gray-100"
+                                  }`}
+                                >
+                                  {page}
+                                </button>
+                              </div>
+                            )
+                          })}
+                      </div>
+
+                      <button
+                        onClick={() => setCurrentPage(currentPage + 1)}
+                        disabled={currentPage === totalPages}
+                        className="p-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                      >
+                        <ChevronLeft className="w-5 h-5" />
+                      </button>
+                      <button
+                        onClick={() => setCurrentPage(totalPages)}
+                        disabled={currentPage === totalPages}
+                        className="px-3 py-2 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                      >
+                        الأخير
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="overflow-x-auto">
+                  <table className="w-full">
+                    <thead className="bg-gradient-to-r from-emerald-500 to-teal-600">
+                      <tr>
+                        <th className="px-6 py-4 text-right text-sm font-bold text-white">رقم التتبع</th>
+                        <th className="px-6 py-4 text-right text-sm font-bold text-white">اسم العميل</th>
+                        <th className="px-6 py-4 text-right text-sm font-bold text-white">الوجهة</th>
+                        <th className="px-6 py-4 text-right text-sm font-bold text-white">شركة الشحن</th>
+                        <th className="px-6 py-4 text-right text-sm font-bold text-white">بريد العميل</th>
+                        <th className="px-6 py-4 text-right text-sm font-bold text-white">الحالة</th>
+                        <th className="px-6 py-4 text-right text-sm font-bold text-white">قيمة الطلب</th>
+                        <th className="px-6 py-4 text-right text-sm font-bold text-white">الإجمالي</th>
+                        <th className="px-6 py-4 text-right text-sm font-bold text-white">التاريخ</th>
+                        <th className="px-6 py-4 text-center text-sm font-bold text-white">الإجراءات</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100">
+                      {paginatedShipments.map((shipment, index) => (
+                        <motion.tr
+                          key={shipment._id}
+                          initial={{ opacity: 0, y: 20 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          transition={{ delay: index * 0.02 }}
+                          className="hover:bg-emerald-50/50 transition-colors"
+                        >
+                          <td className="px-6 py-4">
+                            <div className="flex items-center gap-3">
+                              <div className="w-10 h-10 bg-gradient-to-br from-emerald-500 to-teal-600 rounded-lg flex items-center justify-center">
+                                <Package className="w-5 h-5 text-white" />
+                              </div>
+                              <span className="font-bold text-gray-900">{shipment.trackingId}</span>
+                            </div>
+                          </td>
+                          <td className="px-6 py-4">
+                            <span className="text-gray-900 font-medium">{shipment.customerName}</span>
+                          </td>
+                          <td className="px-6 py-4">
+                            <div className="flex items-center gap-2 text-gray-600">
+                              <MapPin className="w-4 h-4 text-emerald-600 flex-shrink-0" />
+                              <span className="text-sm">{shipment.destination}</span>
+                            </div>
+                          </td>
+                          <td className="px-6 py-4">
+                            <div className="flex items-center gap-2 text-gray-600">
+                              <Truck className="w-4 h-4 text-blue-600 flex-shrink-0" />
+                              <span className="text-sm">{shipment.shapmentCompany}</span>
+                            </div>
+                          </td>
+                          <td className="px-6 py-4">
+                            <div className="flex items-center gap-2 text-gray-600">
+                              <Mail className="w-4 h-4 text-purple-600 flex-shrink-0" />
+                              <span className="text-sm">{shipment.customerEmail || 'غير متوفر'}</span>
+                            </div>
+                          </td>
+                          <td className="px-6 py-4">{getStatusBadge(shipment.status)}</td>
+                          <td className="px-6 py-4">
+                            <span className="text-sm font-semibold text-gray-700">
+                              {shipment.ordervalue.toFixed(2)} ر.س
+                            </span>
+                          </td>
+                          <td className="px-6 py-4">
+                            <span className="text-base font-bold text-emerald-600">
+                              {shipment.totalprice.toFixed(2)} ر.س
+                            </span>
+                          </td>
+                          <td className="px-6 py-4">
+                            <div className="flex items-center gap-2 text-gray-600">
+                              <Clock className="w-4 h-4 text-gray-400 flex-shrink-0" />
+                              <span className="text-sm">{new Date(shipment.createdAt).toLocaleDateString("ar-SA")}</span>
+                            </div>
+                          </td>
+                          <td className="px-6 py-4">
+                            <div className="flex items-center justify-center gap-2">
+                              <motion.button
+                                whileHover={{ scale: 1.1 }}
+                                whileTap={{ scale: 0.9 }}
+                                onClick={() => handleViewDetails(shipment)}
+                                className="p-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors"
+                                title="عرض التفاصيل"
+                              >
+                                <Eye className="w-4 h-4" />
+                              </motion.button>
+                              <motion.button
+                                whileHover={{ scale: 1.1 }}
+                                whileTap={{ scale: 0.9 }}
+                                onClick={() => handleEditStatus(shipment)}
+                                className="p-2 bg-emerald-500 text-white rounded-lg hover:bg-emerald-600 transition-colors"
+                                title="تحديث الحالة"
+                              >
+                                <Edit className="w-4 h-4" />
+                              </motion.button>
+                              <motion.button
+                                whileHover={{ scale: 1.1 }}
+                                whileTap={{ scale: 0.9 }}
+                                onClick={() => handleDeleteShipment(shipment)}
+                                className="p-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors"
+                                title="حذف الشحنة"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </motion.button>
+                            </div>
+                          </td>
+                        </motion.tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </>
+          )}
+        </motion.div>
+
+        <AnimatePresence>
+          {showDetailsModal && selectedShipment && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+              onClick={() => setShowDetailsModal(false)}
+            >
+              <motion.div
+                initial={{ scale: 0.9, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                exit={{ scale: 0.9, opacity: 0 }}
+                onClick={(e) => e.stopPropagation()}
+                className="bg-white rounded-2xl p-6 max-w-2xl w-full max-h-[90vh] overflow-y-auto"
+              >
+                <div className="flex items-center justify-between mb-6">
+                  <h2 className="text-2xl font-bold text-gray-900">تفاصيل الشحنة</h2>
+                  <button
+                    onClick={() => setShowDetailsModal(false)}
+                    className="text-gray-400 hover:text-gray-600 transition-colors"
+                  >
+                    <XCircle className="w-6 h-6" />
+                  </button>
+                </div>
+
+                <div className="space-y-4">
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="bg-gray-50 p-4 rounded-xl">
+                      <p className="text-sm text-gray-500 mb-1">رقم التتبع</p>
+                      <p className="font-bold text-gray-900">{selectedShipment.trackingId}</p>
+                    </div>
+                    <div className="bg-gray-50 p-4 rounded-xl">
+                      <p className="text-sm text-gray-500 mb-1">اسم العميل</p>
+                      <p className="font-bold text-gray-900">{selectedShipment.customerName}</p>
+                    </div>
+                    <div className="bg-gray-50 p-4 rounded-xl col-span-2">
+                      <p className="text-sm text-gray-500 mb-1">بريد العميل</p>
+                      <p className="font-bold text-gray-900">{selectedShipment.customerEmail || 'غير متوفر'}</p>
+                    </div>
+                    <div className="bg-gray-50 p-4 rounded-xl">
+                      <p className="text-sm text-gray-500 mb-1">شركة الشحن</p>
+                      <p className="font-bold text-gray-900">{selectedShipment.shapmentCompany}</p>
+                    </div>
+                    <div className="bg-gray-50 p-4 rounded-xl">
+                      <p className="text-sm text-gray-500 mb-1">رقم الشحنة</p>
+                      <p className="font-bold text-gray-900">{selectedShipment.companyshipmentid}</p>
+                    </div>
+                    <div className="bg-gray-50 p-4 rounded-xl">
+                      <p className="text-sm text-gray-500 mb-1">الوجهة</p>
+                      <p className="font-bold text-gray-900">{selectedShipment.destination}</p>
+                    </div>
+                    <div className="bg-gray-50 p-4 rounded-xl">
+                      <p className="text-sm text-gray-500 mb-1">الحالة</p>
+                      <div className="mt-2">{getStatusBadge(selectedShipment.status)}</div>
+                    </div>
+                    <div className="bg-gray-50 p-4 rounded-xl">
+                      <p className="text-sm text-gray-500 mb-1">قيمة الطلب</p>
+                      <p className="font-bold text-emerald-600">{selectedShipment.ordervalue.toFixed(2)} ر.س</p>
+                    </div>
+                    <div className="bg-gray-50 p-4 rounded-xl">
+                      <p className="text-sm text-gray-500 mb-1">السعر الإجمالي</p>
+                      <p className="font-bold text-emerald-600">{selectedShipment.totalprice.toFixed(2)} ر.س</p>
+                    </div>
+                    <div className="bg-gray-50 p-4 rounded-xl">
+                      <p className="text-sm text-gray-500 mb-1">تاريخ الإنشاء</p>
+                      <p className="font-bold text-gray-900">
+                        {new Date(selectedShipment.createdAt).toLocaleDateString("ar-SA", {
+                          year: "numeric",
+                          month: "long",
+                          day: "numeric",
+                        })}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </motion.div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        <AnimatePresence>
+          {showEditModal && selectedShipment && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+              onClick={() => setShowEditModal(false)}
+            >
+              <motion.div
+                initial={{ scale: 0.9, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                exit={{ scale: 0.9, opacity: 0 }}
+                onClick={(e) => e.stopPropagation()}
+                className="bg-white rounded-2xl p-6 max-w-md w-full"
+              >
+                <div className="flex items-center justify-between mb-6">
+                  <h2 className="text-2xl font-bold text-gray-900">تحديث حالة الشحنة</h2>
+                  <button
+                    onClick={() => setShowEditModal(false)}
+                    className="text-gray-400 hover:text-gray-600 transition-colors"
+                  >
+                    <XCircle className="w-6 h-6" />
+                  </button>
+                </div>
+
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">رقم التتبع</label>
+                    <p className="text-gray-900 font-bold">{selectedShipment.trackingId}</p>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">الحالة الجديدة</label>
+                    <select
+                      value={editStatus}
+                      onChange={(e) => setEditStatus(e.target.value)}
+                      className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
+                    >
+                      <option value="قيد الانتظار">قيد الانتظار</option>
+                      <option value="قيد المعالجة">قيد المعالجة</option>
+                      <option value="قيد التوصيل">قيد التوصيل</option>
+                      <option value="تم التسليم">تم التسليم</option>
+                      <option value="راجع">راجع</option>
+                      <option value="ملغي">ملغي</option>
+                    </select>
+                  </div>
+
+                  <div className="flex gap-3 pt-4">
+                    <button
+                      onClick={() => setShowEditModal(false)}
+                      disabled={isSubmitting}
+                      className="flex-1 px-4 py-3 bg-gray-100 text-gray-700 rounded-xl font-medium hover:bg-gray-200 transition-colors disabled:opacity-50"
+                    >
+                      إلغاء
+                    </button>
+                    <button
+                      onClick={handleUpdateStatus}
+                      disabled={isSubmitting}
+                      className="flex-1 px-4 py-3 bg-emerald-600 text-white rounded-xl font-medium hover:bg-emerald-700 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+                    >
+                      {isSubmitting ? (
+                        <>
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                          <span>جاري التحديث...</span>
+                        </>
+                      ) : (
+                        "تحديث"
+                      )}
+                    </button>
+                  </div>
+                </div>
+              </motion.div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        <AnimatePresence>
+          {showDeleteModal && selectedShipment && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+              onClick={() => setShowDeleteModal(false)}
+            >
+              <motion.div
+                initial={{ scale: 0.9, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                exit={{ scale: 0.9, opacity: 0 }}
+                onClick={(e) => e.stopPropagation()}
+                className="bg-white rounded-2xl p-6 max-w-md w-full"
+              >
+                <div className="flex items-center justify-between mb-6">
+                  <h2 className="text-2xl font-bold text-gray-900">تأكيد الحذف</h2>
+                  <button
+                    onClick={() => setShowDeleteModal(false)}
+                    className="text-gray-400 hover:text-gray-600 transition-colors"
+                  >
+                    <XCircle className="w-6 h-6" />
+                  </button>
+                </div>
+
+                <div className="space-y-4">
+                  <div className="bg-red-50 border border-red-200 rounded-xl p-4">
+                    <p className="text-red-800">
+                      هل أنت متأكد من حذف الشحنة <strong>{selectedShipment.trackingId}</strong>؟
+                    </p>
+                    <p className="text-red-600 text-sm mt-2">لا يمكن التراجع عن هذا الإجراء.</p>
+                  </div>
+
+                  <div className="flex gap-3 pt-4">
+                    <button
+                      onClick={() => setShowDeleteModal(false)}
+                      disabled={isSubmitting}
+                      className="flex-1 px-4 py-3 bg-gray-100 text-gray-700 rounded-xl font-medium hover:bg-gray-200 transition-colors disabled:opacity-50"
+                    >
+                      إلغاء
+                    </button>
+                    <button
+                      onClick={handleConfirmDelete}
+                      disabled={isSubmitting}
+                      className="flex-1 px-4 py-3 bg-red-600 text-white rounded-xl font-medium hover:bg-red-700 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+                    >
+                      {isSubmitting ? (
+                        <>
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                          <span>جاري الحذف...</span>
+                        </>
+                      ) : (
+                        <>
+                          <Trash2 className="w-4 h-4" />
+                          <span>حذف</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
+                </div>
+              </motion.div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </div>
+    </DashboardLayout>
+  )
+}
