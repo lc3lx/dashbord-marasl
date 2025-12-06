@@ -192,7 +192,7 @@ export default function UserDetails() {
                   </div>
 
                   <div className="mt-8 flex space-x-3 space-x-reverse">
-                    <motion.button 
+                    <motion.button
                       whileHover={{ scale: 1.02 }}
                       whileTap={{ scale: 0.98 }}
                       className="flex-1 bg-gradient-to-r from-indigo-500 to-purple-600 text-white px-6 py-3 rounded-xl hover:from-indigo-600 hover:to-purple-700 transition-all font-medium shadow-lg flex items-center justify-center gap-2"
@@ -200,7 +200,7 @@ export default function UserDetails() {
                       <Edit className="w-5 h-5" />
                       تعديل
                     </motion.button>
-                    <motion.button 
+                    <motion.button
                       whileHover={{ scale: 1.02 }}
                       whileTap={{ scale: 0.98 }}
                       className="flex-1 bg-gradient-to-r from-red-500 to-red-600 text-white px-6 py-3 rounded-xl hover:from-red-600 hover:to-red-700 transition-all font-medium shadow-lg flex items-center justify-center gap-2"
@@ -211,12 +211,13 @@ export default function UserDetails() {
                   </div>
                 </div>
               </div>
-              </motion.div>
+            </motion.div>
+
             {/* Stats and Activity */}
             <motion.div className="lg:col-span-2 space-y-8" variants={itemVariants}>
               {/* Stats Cards */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <motion.div 
+                <motion.div
                   className="bg-white rounded-2xl border border-gray-100 p-6 hover:shadow-xl transition-all duration-300 group overflow-hidden"
                   whileHover={{ y: -4 }}
                 >
@@ -226,7 +227,7 @@ export default function UserDetails() {
                     </div>
                     <div>
                       <p className="text-sm font-medium text-gray-600 mb-1">إجمالي الشحنات</p>
-                      <p className="text-4xl font-bold text-gray-900 tabular-nums break-words max-w-full">{shipments.length.toLocaleString('en-US')}</p>
+                      <p className="text-4xl font-bold text-gray-900 tabular-nums break-words max-w-full">{shipments.length.toLocaleString("en-US")}</p>
                     </div>
                     <div className="flex items-center gap-2 flex-wrap">
                       <div className="flex items-center gap-1 px-3 py-1 bg-blue-50 rounded-full">
@@ -235,10 +236,9 @@ export default function UserDetails() {
                       </div>
                     </div>
                   </div>
-                </div>
                 </motion.div>
 
-                <motion.div 
+                <motion.div
                   className="bg-white rounded-2xl border border-gray-100 p-6 hover:shadow-xl transition-all duration-300 group overflow-hidden"
                   whileHover={{ y: -4 }}
                 >
@@ -248,7 +248,7 @@ export default function UserDetails() {
                     </div>
                     <div>
                       <p className="text-sm font-medium text-gray-600 mb-1">إجمالي المصروفات</p>
-                      <p className="text-4xl font-bold text-gray-900 tabular-nums break-words max-w-full">{totalSpent.toLocaleString('en-US')}</p>
+                      <p className="text-4xl font-bold text-gray-900 tabular-nums break-words max-w-full">{totalSpent.toLocaleString("en-US")}</p>
                     </div>
                     <div className="flex items-center gap-2 flex-wrap">
                       <div className="flex items-center gap-1 px-3 py-1 bg-emerald-50 rounded-full">
@@ -257,10 +257,9 @@ export default function UserDetails() {
                       </div>
                     </div>
                   </div>
-                </div>
                 </motion.div>
 
-                <motion.div 
+                <motion.div
                   className="bg-white rounded-2xl border border-gray-100 p-6 hover:shadow-xl transition-all duration-300 group overflow-hidden"
                   whileHover={{ y: -4 }}
                 >
@@ -270,7 +269,7 @@ export default function UserDetails() {
                     </div>
                     <div>
                       <p className="text-sm font-medium text-gray-600 mb-1">إجمالي الطلبات</p>
-                      <p className="text-4xl font-bold text-gray-900 tabular-nums break-words max-w-full">{orders.length.toLocaleString('en-US')}</p>
+                      <p className="text-4xl font-bold text-gray-900 tabular-nums break-words max-w-full">{orders.length.toLocaleString("en-US")}</p>
                     </div>
                     <div className="flex items-center gap-2 flex-wrap">
                       <div className="flex items-center gap-1 px-3 py-1 bg-purple-50 rounded-full">
@@ -281,7 +280,7 @@ export default function UserDetails() {
                   </div>
                 </motion.div>
 
-                <motion.div 
+                <motion.div
                   className="bg-white rounded-2xl border border-gray-100 p-6 hover:shadow-xl transition-all duration-300 group overflow-hidden"
                   whileHover={{ y: -4 }}
                 >
@@ -291,7 +290,7 @@ export default function UserDetails() {
                     </div>
                     <div>
                       <p className="text-sm font-medium text-gray-600 mb-1">رصيد المحفظة</p>
-                      <p className="text-4xl font-bold text-gray-900 tabular-nums break-words max-w-full">{(wallet?.balance ?? 0).toLocaleString('en-US')}</p>
+                      <p className="text-4xl font-bold text-gray-900 tabular-nums break-words max-w-full">{(wallet?.balance ?? 0).toLocaleString("en-US")}</p>
                     </div>
                     <div className="flex items-center gap-2 flex-wrap">
                       <div className="flex items-center gap-1 px-3 py-1 bg-amber-50 rounded-full">
@@ -300,20 +299,18 @@ export default function UserDetails() {
                       </div>
                     </div>
                   </div>
-                </div>
                 </motion.div>
+              </div>
 
               {/* Recent Activity */}
-              <motion.div 
+              <motion.div
                 className="relative bg-white/90 backdrop-blur-sm rounded-2xl border border-white/20 p-8 overflow-hidden shadow-lg"
                 whileHover={{ y: -4 }}
-                style={{
-                  boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.1), 0 8px 16px -8px rgba(0, 0, 0, 0.05)'
-                }}
+                style={{ boxShadow: "0 25px 50px -12px rgba(0, 0, 0, 0.1), 0 8px 16px -8px rgba(0, 0, 0, 0.05)" }}
               >
-                <div className="absolute inset-0 bg-gradient-to-br from-slate-50/50 to-indigo-50/30"></div>
-                <div className="absolute top-0 right-0 w-32 h-32 bg-indigo-500/5 rounded-full -translate-y-16 translate-x-16"></div>
-                
+                <div className="absolute inset-0 bg-gradient-to-br from-slate-50/50 to-indigo-50/30" />
+                <div className="absolute top-0 right-0 w-32 h-32 bg-indigo-500/5 rounded-full -translate-y-16 translate-x-16" />
+
                 <div className="relative">
                   <div className="flex items-center gap-3 mb-6">
                     <div className="w-12 h-12 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-xl flex items-center justify-center">
@@ -321,7 +318,7 @@ export default function UserDetails() {
                     </div>
                     <h3 className="text-2xl font-bold text-gray-900">النشاط الأخير</h3>
                   </div>
-                  
+
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     <div className="bg-white/50 rounded-xl p-6">
                       <h4 className="text-lg font-semibold text-gray-800 mb-4 flex items-center gap-2">
@@ -329,9 +326,9 @@ export default function UserDetails() {
                         آخر الشحنات
                       </h4>
                       <div className="space-y-3">
-                        {shipments.slice(0,5).map((s: any) => (
-                          <motion.div 
-                            key={s._id} 
+                        {shipments.slice(0, 5).map((s: any) => (
+                          <motion.div
+                            key={s._id}
                             className="flex items-center justify-between py-3 px-4 bg-white rounded-lg hover:bg-gray-50 transition-colors"
                             whileHover={{ x: 4 }}
                           >
@@ -344,7 +341,7 @@ export default function UserDetails() {
                                   {s.trackingId || s.companyshipmentid || `شحنة #${s._id.slice(-6)}`}
                                 </div>
                                 <div className="text-sm text-gray-500">
-                                  {new Date(s.createdAt).toLocaleDateString('ar-SA')}
+                                  {new Date(s.createdAt).toLocaleDateString("ar-SA")}
                                 </div>
                               </div>
                             </div>
@@ -359,16 +356,16 @@ export default function UserDetails() {
                         )}
                       </div>
                     </div>
-                    
+
                     <div className="bg-white/50 rounded-xl p-6">
                       <h4 className="text-lg font-semibold text-gray-800 mb-4 flex items-center gap-2">
                         <Activity className="w-5 h-5 text-purple-500" />
                         آخر الطلبات
                       </h4>
                       <div className="space-y-3">
-                        {orders.slice(0,5).map((o: any) => (
-                          <motion.div 
-                            key={o._id} 
+                        {orders.slice(0, 5).map((o: any) => (
+                          <motion.div
+                            key={o._id}
                             className="flex items-center justify-between py-3 px-4 bg-white rounded-lg hover:bg-gray-50 transition-colors"
                             whileHover={{ x: 4 }}
                           >
@@ -381,7 +378,7 @@ export default function UserDetails() {
                                   {o.orderNumber || `طلب #${o._id.slice(-6)}`}
                                 </div>
                                 <div className="text-sm text-gray-500">
-                                  {new Date(o.createdAt).toLocaleDateString('ar-SA')}
+                                  {new Date(o.createdAt).toLocaleDateString("ar-SA")}
                                 </div>
                               </div>
                             </div>
@@ -397,19 +394,18 @@ export default function UserDetails() {
                       </div>
                     </div>
                   </div>
-                </motion.div>
+                </div>
+              </motion.div>
 
               {/* User's Shipments */}
-              <motion.div 
+              <motion.div
                 className="relative bg-white/90 backdrop-blur-sm rounded-2xl border border-white/20 p-8 overflow-hidden shadow-lg"
                 whileHover={{ y: -4 }}
-                style={{
-                  boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.1), 0 8px 16px -8px rgba(0, 0, 0, 0.05)'
-                }}
+                style={{ boxShadow: "0 25px 50px -12px rgba(0, 0, 0, 0.1), 0 8px 16px -8px rgba(0, 0, 0, 0.05)" }}
               >
-                <div className="absolute inset-0 bg-gradient-to-br from-slate-50/50 to-blue-50/30"></div>
-                <div className="absolute top-0 right-0 w-32 h-32 bg-blue-500/5 rounded-full -translate-y-16 translate-x-16"></div>
-                
+                <div className="absolute inset-0 bg-gradient-to-br from-slate-50/50 to-blue-50/30" />
+                <div className="absolute top-0 right-0 w-32 h-32 bg-blue-500/5 rounded-full -translate-y-16 translate-x-16" />
+
                 <div className="relative">
                   <div className="flex items-center justify-between mb-6">
                     <div className="flex items-center gap-3">
@@ -418,20 +414,20 @@ export default function UserDetails() {
                       </div>
                       <h3 className="text-2xl font-bold text-gray-900">شحنات المستخدم</h3>
                     </div>
-                    <Link 
-                      href={`/dashboard/shipments?userId=${userId}`} 
+                    <Link
+                      href={`/dashboard/shipments?userId=${userId}`}
                       className="text-blue-600 hover:text-blue-700 font-medium flex items-center gap-2 hover:gap-3 transition-all"
                     >
                       عرض الكل
                       <Eye className="w-4 h-4" />
                     </Link>
                   </div>
-                  
+
                   {shipments.length ? (
                     <div className="space-y-3">
-                      {shipments.slice(0,5).map((s: any) => (
-                        <motion.div 
-                          key={s._id} 
+                      {shipments.slice(0, 5).map((s: any) => (
+                        <motion.div
+                          key={s._id}
                           className="flex items-center justify-between py-4 px-6 bg-white/70 rounded-xl hover:bg-white transition-colors"
                           whileHover={{ scale: 1.02 }}
                         >
@@ -443,9 +439,7 @@ export default function UserDetails() {
                               <div className="font-semibold text-gray-900">
                                 {s.trackingId || s.companyshipmentid || `شحنة #${s._id.slice(-6)}`}
                               </div>
-                              <div className="text-sm text-gray-500">
-                                {s.shapmentCompany || 'شركة الشحن'}
-                              </div>
+                              <div className="text-sm text-gray-500">{s.shapmentCompany || "شركة الشحن"}</div>
                             </div>
                           </div>
                           <div className="text-right">
@@ -453,7 +447,7 @@ export default function UserDetails() {
                               {(s.ordervalue ?? s.totalprice ?? 0).toLocaleString()} ريال
                             </div>
                             <div className="text-sm text-gray-500">
-                              {new Date(s.createdAt).toLocaleDateString('ar-SA')}
+                              {new Date(s.createdAt).toLocaleDateString("ar-SA")}
                             </div>
                           </div>
                         </motion.div>
