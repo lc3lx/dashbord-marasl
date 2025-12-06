@@ -75,6 +75,8 @@ export default function CustomersPage() {
       walletSpent,
       totalOrders,
       totalShipments,
+      orders: totalOrders,
+      totalSpent: walletSpent,
       shipmentsSent: customer.shipmentsSent ?? customer.shipments?.sent ?? totalShipments,
       shipmentsReceived: customer.shipmentsReceived ?? customer.shipments?.delivered ?? 0,
       shipmentsCancelled: customer.shipmentsCancelled ?? customer.shipments?.canceled ?? 0,

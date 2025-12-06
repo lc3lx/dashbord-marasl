@@ -1,6 +1,26 @@
 "use client"
 import DashboardLayout from "@/components/dashboard/DashboardLayout"
-import { Truck, AlertCircle, Package, MapPin, Clock, Search, Filter, CheckCircle, XCircle, Loader2, Eye, Edit, Trash2, RefreshCw, RotateCcw, Mail, ChevronLeft, ChevronRight } from 'lucide-react'
+import {
+  Truck,
+  AlertCircle,
+  AlertTriangle,
+  Package,
+  MapPin,
+  Clock,
+  Search,
+  Filter,
+  CheckCircle,
+  XCircle,
+  Loader2,
+  Eye,
+  Edit,
+  Trash2,
+  RefreshCw,
+  RotateCcw,
+  Mail,
+  ChevronLeft,
+  ChevronRight,
+} from "lucide-react"
 import { motion, AnimatePresence } from "framer-motion"
 import { useState, useEffect } from "react"
 import useSWR from "swr"
@@ -15,9 +35,14 @@ interface Shipment {
   customerEmail?: string
   destination?: string
   status?: string
+  shipmentstates?: string
   ordervalue?: number
   totalprice?: number
   createdAt?: string
+  paymentMathod?: string
+  boxNum?: number
+  weight?: number
+  orderSou?: string
   customerId?: {
     firstName?: string
     lastName?: string
@@ -27,30 +52,83 @@ interface Shipment {
     city?: string
     location?: string
     country?: string
+    governorate?: string
+    street?: string
+    district?: string
+    buildingNumber?: string
+    additionalNumber?: string
   }
 }
 
-const statusOptions = [
+const filterStatusOptions = [
   { value: "all", label: "جميع الحالات" },
   { value: "READY_FOR_PICKUP", label: "جاهز للاستلام" },
-  { value: "PENDING", label: "قيد الانتظار" },
   { value: "IN_TRANSIT", label: "قيد التوصيل" },
-  { value: "DELIVERED", label: "تم التسليم" },
-  { value: "RETURNED", label: "راجع" },
-  { value: "CANCELED", label: "ملغي" },
+  { value: "Delivered", label: "تم التسليم" },
+  { value: "Canceled", label: "ملغي" },
+  { value: "Returned", label: "راجع" },
 ]
 
-const statusMeta: Record<
-  string,
-  { color: string; icon: any; label: string }
-> = {
+const statusUpdateOptions = [
+  { value: "READY_FOR_PICKUP", label: "جاهز للاستلام" },
+  { value: "IN_TRANSIT", label: "قيد التوصيل" },
+  { value: "Delivered", label: "تم التسليم" },
+  { value: "Canceled", label: "ملغي" },
+]
+
+const statusMeta: Record<string, { color: string; icon: any; label: string }> = {
   READY_FOR_PICKUP: { color: "bg-cyan-100 text-cyan-700 border-cyan-200", icon: Package, label: "جاهز للاستلام" },
-  PENDING: { color: "bg-yellow-100 text-yellow-700 border-yellow-200", icon: Clock, label: "قيد الانتظار" },
   IN_TRANSIT: { color: "bg-blue-100 text-blue-700 border-blue-200", icon: Truck, label: "قيد التوصيل" },
+  OUT_FOR_DELIVERY: { color: "bg-indigo-100 text-indigo-700 border-indigo-200", icon: Truck, label: "خارج للتسليم" },
   DELIVERED: { color: "bg-green-100 text-green-700 border-green-200", icon: CheckCircle, label: "تم التسليم" },
   RETURNED: { color: "bg-orange-100 text-orange-700 border-orange-200", icon: RotateCcw, label: "راجع" },
+  FAILED_DELIVERY: { color: "bg-amber-100 text-amber-700 border-amber-200", icon: AlertTriangle, label: "فشل التسليم" },
   CANCELED: { color: "bg-red-100 text-red-700 border-red-200", icon: XCircle, label: "ملغي" },
+  EXCEPTION: { color: "bg-rose-100 text-rose-700 border-rose-200", icon: AlertCircle, label: "استثناء" },
+  PENDING: { color: "bg-yellow-100 text-yellow-700 border-yellow-200", icon: Clock, label: "قيد المراجعة" },
+  UNKNOWN: { color: "bg-gray-100 text-gray-700 border-gray-200", icon: AlertCircle, label: "غير معروف" },
 }
+
+const currencyFormatter = new Intl.NumberFormat("ar-SA", {
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2,
+})
+
+const formatCurrency = (value?: number) => currencyFormatter.format(Number(value ?? 0))
+
+const formatDate = (value?: string, withTime = false) => {
+  if (!value) return "غير متاح"
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return "غير متاح"
+  return withTime
+    ? date.toLocaleString("ar-SA", { dateStyle: "medium", timeStyle: "short" })
+    : date.toLocaleDateString("ar-SA", { year: "numeric", month: "long", day: "numeric" })
+}
+
+const statusAliasMap: Record<string, string> = {
+  CANCELLED: "CANCELED",
+}
+
+const resolveStatusValue = (shipment?: Shipment) => shipment?.shipmentstates || shipment?.status || "PENDING"
+const resolveStatusKey = (status?: string) => {
+  if (!status) return "PENDING"
+  const normalized = status.replace(/\s+/g, "_").toUpperCase()
+  return statusAliasMap[normalized] || normalized
+}
+const resolveTrackingNumber = (shipment: Shipment) =>
+  shipment.trackingId || shipment.companyshipmentid || "غير متوفر"
+const resolveCustomerName = (shipment: Shipment) =>
+  shipment.customerName ||
+  `${shipment.customerId?.firstName || ""} ${shipment.customerId?.lastName || ""}`.trim() ||
+  "عميل"
+const resolveCustomerEmail = (shipment: Shipment) => shipment.customerEmail || shipment.customerId?.email || "غير متوفر"
+const resolveDestination = (shipment: Shipment) =>
+  shipment.destination ||
+  shipment.receiverAddress?.city ||
+  shipment.receiverAddress?.location ||
+  shipment.receiverAddress?.district ||
+  shipment.receiverAddress?.country ||
+  "غير محدد"
 
 export default function ShipmentsPage() {
   const [searchTerm, setSearchTerm] = useState("")
@@ -126,7 +204,7 @@ export default function ShipmentsPage() {
 
   const handleEditStatus = (shipment: Shipment) => {
     setSelectedShipment(shipment)
-    setEditStatus(shipment.status)
+    setEditStatus(resolveStatusValue(shipment))
     setShowEditModal(true)
   }
 
@@ -264,7 +342,7 @@ export default function ShipmentsPage() {
                   onChange={(e) => setStatusFilter(e.target.value)}
                   className="px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
                 >
-                  {statusOptions.map((option) => (
+                  {filterStatusOptions.map((option) => (
                     <option key={option.value} value={option.value}>
                       {option.label}
                     </option>
