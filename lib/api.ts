@@ -84,6 +84,33 @@ const apiClient = {
     return response.json()
   },
 
+  async put(endpoint: string, data: any) {
+    const { url } = resolveRequestUrl(endpoint)
+
+    const token = typeof window !== "undefined" ? localStorage.getItem("authToken") : null
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+    }
+    if (token) {
+      headers["x-auth-token"] = token
+      headers["Authorization"] = `Bearer ${token}`
+    }
+
+    const response = await fetch(url, {
+      method: "PUT",
+      headers,
+      body: JSON.stringify(data),
+      credentials: "include",
+    })
+
+    if (!response.ok) {
+      const error = await response.json()
+      throw new Error(error.error || error.message || "حدث خطأ")
+    }
+
+    return response.json()
+  },
+
   async get(endpoint: string, params?: any) {
     try {
       const { url, isExternal } = resolveRequestUrl(endpoint)
@@ -248,6 +275,12 @@ export const adminShipmentsAPI = {
   getAll: (params?: any) => apiClient.get("/api/admin/shipments", params),
   updateStatus: (id: string, status: string) =>
     apiClient.patch(`/api/admin/shipments/${id}/status`, { status }),
+}
+
+export const adminWalletsAPI = {
+  getPendingTransfers: () => apiClient.get("/api/admin/wallets/pending-transfers"),
+  approveBankTransfer: (transactionId: string, payload: { approved: boolean; notes?: string }) =>
+    apiClient.put(`/api/admin/wallets/approve-bank-transfer/${transactionId}`, payload),
 }
 
 export const walletsAPI = {

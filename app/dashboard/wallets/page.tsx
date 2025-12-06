@@ -1,12 +1,32 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useCallback } from "react"
 import DashboardLayout from "@/components/dashboard/DashboardLayout"
-import { Wallet, Plus, Search, TrendingUp, DollarSign, History, Calendar, User, Mail, ArrowDownCircle, ArrowUpCircle, Building2, Clock, CheckCircle2, XCircle, Eye, ChevronLeft, ChevronRight } from 'lucide-react'
+import {
+  Wallet,
+  RefreshCw,
+  Search,
+  TrendingUp,
+  DollarSign,
+  History,
+  Calendar,
+  User,
+  Mail,
+  ArrowDownCircle,
+  ArrowUpCircle,
+  Building2,
+  Clock,
+  CheckCircle2,
+  XCircle,
+  Eye,
+  ChevronLeft,
+  ChevronRight,
+  Loader2,
+} from "lucide-react"
 import { motion } from "framer-motion"
 import AdvancedFilterPanel from "@/components/filters/AdvancedFilterPanel"
 import EnhancedPrintButton from "@/components/print/EnhancedPrintButton11"
-import { walletsAPI, usersAPI } from "@/lib/api"
+import { adminWalletsAPI, usersAPI, transactionsAPI } from "@/lib/api"
 
 interface Transaction {
   _id?: string
