@@ -1,6 +1,43 @@
+const API_BASE_URL = (process.env.NEXT_PUBLIC_API_URL || "").replace(/\/$/, "")
+
+const shouldUseProxy = () => {
+  if (typeof window !== "undefined") {
+    if (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1") {
+      return true
+    }
+  }
+
+  return process.env.NEXT_PUBLIC_USE_PROXY === "true"
+}
+
+const resolveRequestUrl = (endpoint: string) => {
+  const normalizedEndpoint = endpoint.startsWith("/") ? endpoint : `/${endpoint}`
+
+  if (shouldUseProxy()) {
+    return {
+      url: `/api/proxy${normalizedEndpoint}`,
+      isExternal: false,
+    }
+  }
+
+  if (!API_BASE_URL) {
+    throw new Error("لم يتم تهيئة عنوان واجهة البرمجة الصحيح (NEXT_PUBLIC_API_URL)")
+  }
+
+  let backendPath = normalizedEndpoint
+  if (API_BASE_URL.endsWith("/api") && normalizedEndpoint.startsWith("/api/")) {
+    backendPath = normalizedEndpoint.replace(/^\/api/, "")
+  }
+
+  return {
+    url: `${API_BASE_URL}${backendPath}`,
+    isExternal: true,
+  }
+}
+
 const apiClient = {
   async post(endpoint: string, data: any) {
-    const proxyEndpoint = endpoint.startsWith("/api/") ? `/api/proxy${endpoint}` : endpoint
+    const { url, isExternal } = resolveRequestUrl(endpoint)
 
     const token = typeof window !== "undefined" ? localStorage.getItem("authToken") : null
     const headers: Record<string, string> = {
@@ -11,7 +48,7 @@ const apiClient = {
       headers["Authorization"] = `Bearer ${token}`
     }
 
-    const response = await fetch(proxyEndpoint, {
+    const response = await fetch(url, {
       method: "POST",
       headers,
       body: JSON.stringify(data),
@@ -28,11 +65,11 @@ const apiClient = {
 
   async get(endpoint: string, params?: any) {
     try {
-      const proxyEndpoint = endpoint.startsWith("/api/") ? `/api/proxy${endpoint}` : endpoint
-      const url = new URL(proxyEndpoint, window.location.origin)
+      const { url, isExternal } = resolveRequestUrl(endpoint)
+      const urlInstance = isExternal ? new URL(url) : new URL(url, window.location.origin)
 
       if (params) {
-        Object.keys(params).forEach((key) => url.searchParams.append(key, params[key]))
+        Object.keys(params).forEach((key) => urlInstance.searchParams.append(key, params[key]))
       }
 
       const token = typeof window !== "undefined" ? localStorage.getItem("authToken") : null
@@ -44,7 +81,7 @@ const apiClient = {
         headers["Authorization"] = `Bearer ${token}`
       }
 
-      const response = await fetch(url.toString(), {
+      const response = await fetch(urlInstance.toString(), {
         method: "GET",
         headers,
         credentials: "include",
@@ -87,10 +124,11 @@ const apiClient = {
 
   async getDirect(endpoint: string, params?: any) {
     try {
-      const url = new URL(endpoint, window.location.origin)
+      const { url, isExternal } = resolveRequestUrl(endpoint)
+      const urlInstance = isExternal ? new URL(url) : new URL(url, window.location.origin)
 
       if (params) {
-        Object.keys(params).forEach((key) => url.searchParams.append(key, params[key]))
+        Object.keys(params).forEach((key) => urlInstance.searchParams.append(key, params[key]))
       }
 
       const token = typeof window !== "undefined" ? localStorage.getItem("authToken") : null
@@ -102,7 +140,7 @@ const apiClient = {
         headers["Authorization"] = `Bearer ${token}`
       }
 
-      const response = await fetch(url.toString(), {
+      const response = await fetch(urlInstance.toString(), {
         method: "GET",
         headers,
         credentials: "include",
