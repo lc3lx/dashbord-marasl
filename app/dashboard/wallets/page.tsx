@@ -22,6 +22,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Loader2,
+  Plus,
 } from "lucide-react"
 import { motion } from "framer-motion"
 import AdvancedFilterPanel from "@/components/filters/AdvancedFilterPanel"
