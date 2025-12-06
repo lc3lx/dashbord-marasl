@@ -30,7 +30,8 @@ export default function UsersPage() {
     isActive: true,
   })
   const [currentPage, setCurrentPage] = useState(1)
-  const [itemsPerPage, setItemsPerPage] = useState(10)
+  const [itemsPerPage, setItemsPerPage] = useState<number | "all">("all")
+  const [totalUsers, setTotalUsers] = useState(0)
   const [walletAmount, setWalletAmount] = useState("")
   const [walletDescription, setWalletDescription] = useState("")
   const [walletActionType, setWalletActionType] = useState<"add" | "deduct" | null>(null)
@@ -56,7 +57,8 @@ export default function UsersPage() {
       try {
         setLoading(true)
         setError(null)
-        const response = await usersAPI.getAll()
+        // Always fetch all users without pagination
+        const response = await usersAPI.getAll({ limit: 1000 }) // Fetch a large number to get all users
 
         let usersData = []
         if (response?.success && response?.data) {
@@ -68,6 +70,7 @@ export default function UsersPage() {
         }
 
         setUsers(usersData)
+        setTotalUsers(usersData.length)
       } catch (err: any) {
         console.error("Error fetching users:", err)
         setError(err.message || "فشل تحميل المستخدمين")
@@ -110,10 +113,10 @@ export default function UsersPage() {
     )
   })
 
-  const totalPages = Math.ceil(filteredUsers.length / itemsPerPage)
-  const startIndex = (currentPage - 1) * itemsPerPage
-  const endIndex = startIndex + itemsPerPage
-  const paginatedUsers = filteredUsers.slice(startIndex, endIndex)
+  const totalPages = itemsPerPage === "all" ? 1 : Math.ceil(filteredUsers.length / itemsPerPage)
+  const startIndex = itemsPerPage === "all" ? 0 : (currentPage - 1) * itemsPerPage
+  const endIndex = itemsPerPage === "all" ? filteredUsers.length : startIndex + itemsPerPage
+  const paginatedUsers = itemsPerPage === "all" ? filteredUsers : filteredUsers.slice(startIndex, endIndex)
 
   useEffect(() => {
     setCurrentPage(1)
@@ -493,18 +496,30 @@ export default function UsersPage() {
                 <div className="border-b border-gray-200 px-6 py-4 bg-gray-50">
                   <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
                     <div className="text-sm text-gray-600">
-                      عرض <span className="font-semibold text-gray-900">{startIndex + 1}</span> إلى{" "}
-                      <span className="font-semibold text-gray-900">{Math.min(endIndex, filteredUsers.length)}</span> من{" "}
-                      <span className="font-semibold text-gray-900">{filteredUsers.length}</span> مستخدم
+                      {itemsPerPage === "all" ? (
+                        <span>عرض <span className="font-semibold text-gray-900">جميع المستخدمين</span> - <span className="font-semibold text-gray-900">{filteredUsers.length}</span> مستخدم</span>
+                      ) : (
+                        <span>
+                          عرض <span className="font-semibold text-gray-900">{filteredUsers.length === 0 ? 0 : startIndex + 1}</span> إلى{" "}
+                          <span className="font-semibold text-gray-900">{Math.min(endIndex, filteredUsers.length)}</span> من{" "}
+                          <span className="font-semibold text-gray-900">{filteredUsers.length}</span> مستخدم
+                        </span>
+                      )}
                     </div>
 
                     <div className="flex items-center gap-2">
                       <label className="text-sm text-gray-600">عدد الصفوف:</label>
                       <select
-                        value={itemsPerPage}
+                        value={itemsPerPage === "all" ? "all" : itemsPerPage.toString()}
                         onChange={(e) => {
-                          setItemsPerPage(Number(e.target.value))
-                          setCurrentPage(1)
+                          const value = e.target.value
+                          if (value === "all") {
+                            setItemsPerPage("all")
+                            setCurrentPage(1)
+                          } else {
+                            setItemsPerPage(Number(value))
+                            setCurrentPage(1)
+                          }
                         }}
                         className="px-3 py-1.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
                       >
@@ -513,6 +528,7 @@ export default function UsersPage() {
                         <option value={20}>20</option>
                         <option value={50}>50</option>
                         <option value={100}>100</option>
+                        <option value="all">الكل ({totalUsers})</option>
                       </select>
                     </div>
 

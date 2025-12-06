@@ -34,45 +34,83 @@ export default function CustomersPage() {
   })
 
   const [currentPage, setCurrentPage] = useState(1)
-  const [itemsPerPage, setItemsPerPage] = useState(10)
+  const [itemsPerPage, setItemsPerPage] = useState<number | "all">("all")
+  const [totalCustomers, setTotalCustomers] = useState(0)
 
   useEffect(() => {
     fetchCustomers()
   }, [])
 
+  const enrichCustomer = (customer: any) => {
+    const fullName = `${customer.firstName || ""} ${customer.lastName || ""}`.trim()
+    const walletRecharges = customer.walletRecharges ?? customer.wallet?.rechargeCount ?? 0
+    const walletSpent = Number(
+      customer.walletSpent ?? customer.wallet?.totalSpent ?? customer.totalSpent ?? customer.totalAmount ?? 0,
+    )
+    const totalOrders =
+      customer.totalOrders ??
+      customer.orders?.total ??
+      customer.ordersCount ??
+      customer.orders ??
+      0
+    const totalShipments = customer.totalShipments ?? customer.shipments?.total ?? 0
+
+    return {
+      id: customer._id || customer.id,
+      name: customer.name || fullName || "غير محدد",
+      email: customer.email || "غير محدد",
+      phone: customer.phone || customer.phoneNumber || customer.mobile || "غير محدد",
+      city: customer.city || customer.address?.city || "غير محدد",
+      address:
+        customer.address ||
+        customer.addressLine ||
+        customer.address?.street ||
+        "غير محدد",
+      postalCode: customer.postalCode || customer.address?.postalCode || "",
+      customerType: customer.customerType || customer.role || "individual",
+      notes: customer.notes || "",
+      birthDate: customer.birthDate || "",
+      isAccountActive: customer.isActive ?? customer.isAccountActive ?? true,
+      walletRecharges,
+      walletSpent,
+      totalOrders,
+      totalShipments,
+      shipmentsSent: customer.shipmentsSent ?? customer.shipments?.sent ?? totalShipments,
+      shipmentsReceived: customer.shipmentsReceived ?? customer.shipments?.delivered ?? 0,
+      shipmentsCancelled: customer.shipmentsCancelled ?? customer.shipments?.canceled ?? 0,
+      shipmentsReturned: customer.shipmentsReturned ?? customer.shipments?.returns ?? 0,
+      isWalletCharged:
+        customer.isWalletCharged ??
+        (walletSpent > 0 || (customer.balance ?? 0) > 0),
+      balance: customer.balance ?? 0,
+      lastTransaction:
+        customer.lastTransaction ??
+        customer.lastShipmentDate ??
+        customer.updatedAt ??
+        customer.createdAt ??
+        null,
+    }
+  }
+
   const fetchCustomers = async () => {
     try {
       setLoading(true)
       setError(null)
-      const response = await usersAPI.getAll()
+      const response = await usersAPI.getAll({ limit: 1000 })
 
       let customersData = []
-      if (Array.isArray(response)) {
-        customersData = response
-      } else if (response?.data && Array.isArray(response.data)) {
+      if (response?.success && Array.isArray(response.data)) {
         customersData = response.data
-      } else if (response?.users && Array.isArray(response.users)) {
-        customersData = response.users
+      } else if (Array.isArray(response?.data)) {
+        customersData = response.data
+      } else if (Array.isArray(response)) {
+        customersData = response
       }
 
-      const formattedCustomers = customersData.map((customer: any) => ({
-        id: customer._id || customer.id,
-        name: customer.name || `${customer.firstName || ""} ${customer.lastName || ""}`.trim() || "غير محدد",
-        email: customer.email || "غير محدد",
-        phone: customer.phone || customer.phoneNumber || customer.mobile || "غير محدد",
-        orders: customer.ordersCount || customer.orders || 0,
-        totalSpent: customer.totalSpent || customer.totalAmount || 0,
-        isWalletCharged: customer.isWalletCharged || customer.walletBalance > 0 || false,
-        address: customer.address || "غير محدد",
-        city: customer.city || "غير محدد",
-        postalCode: customer.postalCode || "",
-        customerType: customer.customerType || "individual",
-        notes: customer.notes || "",
-        birthDate: customer.birthDate || "",
-        isAccountActive: customer.isAccountActive !== false,
-      }))
+      const formattedCustomers = customersData.map(enrichCustomer)
 
       setCustomers(formattedCustomers)
+      setTotalCustomers(formattedCustomers.length)
     } catch (err: any) {
       console.error("[v0] خطأ في جلب بيانات العملاء:", err)
       setError(err.message || "فشل في جلب بيانات العملاء")
@@ -121,10 +159,10 @@ export default function CustomersPage() {
     )
   })
 
-  const totalPages = Math.ceil(filteredCustomers.length / itemsPerPage)
-  const startIndex = (currentPage - 1) * itemsPerPage
-  const endIndex = startIndex + itemsPerPage
-  const paginatedCustomers = filteredCustomers.slice(startIndex, endIndex)
+  const totalPages = itemsPerPage === "all" ? 1 : Math.ceil(filteredCustomers.length / itemsPerPage)
+  const startIndex = itemsPerPage === "all" ? 0 : (currentPage - 1) * itemsPerPage
+  const endIndex = itemsPerPage === "all" ? filteredCustomers.length : startIndex + itemsPerPage
+  const paginatedCustomers = itemsPerPage === "all" ? filteredCustomers : filteredCustomers.slice(startIndex, endIndex)
 
   useEffect(() => {
     setCurrentPage(1)

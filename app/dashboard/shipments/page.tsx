@@ -2,61 +2,59 @@
 import DashboardLayout from "@/components/dashboard/DashboardLayout"
 import { Truck, AlertCircle, Package, MapPin, Clock, Search, Filter, CheckCircle, XCircle, Loader2, Eye, Edit, Trash2, RefreshCw, RotateCcw, Mail, ChevronLeft, ChevronRight } from 'lucide-react'
 import { motion, AnimatePresence } from "framer-motion"
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import useSWR from "swr"
+import { adminShipmentsAPI } from "@/lib/api"
 
 interface Shipment {
   _id: string
-  trackingId: string
-  companyshipmentid: string
-  shapmentCompany: string
-  customerName: string
-  customerEmail?: string // إضافة حقل بريد العميل
-  destination: string
-  status: string
-  ordervalue: number
-  totalprice: number
-  createdAt: string
+  trackingId?: string
+  companyshipmentid?: string
+  shapmentCompany?: string
+  customerName?: string
+  customerEmail?: string
+  destination?: string
+  status?: string
+  ordervalue?: number
+  totalprice?: number
+  createdAt?: string
+  customerId?: {
+    firstName?: string
+    lastName?: string
+    email?: string
+  }
+  receiverAddress?: {
+    city?: string
+    location?: string
+    country?: string
+  }
 }
 
-const fetcher = async (url: string) => {
-  console.log("[v0] Fetching shipments from API:", url)
+const statusOptions = [
+  { value: "all", label: "جميع الحالات" },
+  { value: "READY_FOR_PICKUP", label: "جاهز للاستلام" },
+  { value: "PENDING", label: "قيد الانتظار" },
+  { value: "IN_TRANSIT", label: "قيد التوصيل" },
+  { value: "DELIVERED", label: "تم التسليم" },
+  { value: "RETURNED", label: "راجع" },
+  { value: "CANCELED", label: "ملغي" },
+]
 
-  const token = typeof window !== "undefined" ? localStorage.getItem("authToken") : null
-  const headers: Record<string, string> = {
-    "Content-Type": "application/json",
-  }
-  if (token) {
-    headers["x-auth-token"] = token
-    headers["Authorization"] = `Bearer ${token}`
-  }
-
-  const response = await fetch(url, {
-    method: "GET",
-    headers,
-    credentials: "include",
-  })
-
-  if (!response.ok) {
-    const error = await response.json()
-    console.error("[v0] Failed to fetch shipments:", error)
-    throw new Error(error.message || error.error || "فشل في تحميل الشحنات")
-  }
-
-  const data = await response.json()
-  console.log("[v0] Successfully fetched shipments:", Array.isArray(data) ? data.length : "unknown count", "items")
-
-  return data
+const statusMeta: Record<
+  string,
+  { color: string; icon: any; label: string }
+> = {
+  READY_FOR_PICKUP: { color: "bg-cyan-100 text-cyan-700 border-cyan-200", icon: Package, label: "جاهز للاستلام" },
+  PENDING: { color: "bg-yellow-100 text-yellow-700 border-yellow-200", icon: Clock, label: "قيد الانتظار" },
+  IN_TRANSIT: { color: "bg-blue-100 text-blue-700 border-blue-200", icon: Truck, label: "قيد التوصيل" },
+  DELIVERED: { color: "bg-green-100 text-green-700 border-green-200", icon: CheckCircle, label: "تم التسليم" },
+  RETURNED: { color: "bg-orange-100 text-orange-700 border-orange-200", icon: RotateCcw, label: "راجع" },
+  CANCELED: { color: "bg-red-100 text-red-700 border-red-200", icon: XCircle, label: "ملغي" },
 }
 
 export default function ShipmentsPage() {
-  const { data, error, isLoading, mutate } = useSWR("/api/shipments", fetcher, {
-    refreshInterval: 30000, // Auto-refresh every 30 seconds
-    revalidateOnFocus: true, // Refresh when window regains focus
-    revalidateOnReconnect: true, // Refresh when reconnecting
-  })
-
   const [searchTerm, setSearchTerm] = useState("")
+  const [debouncedSearch, setDebouncedSearch] = useState("")
   const [statusFilter, setStatusFilter] = useState<string>("all")
   const [selectedShipment, setSelectedShipment] = useState<Shipment | null>(null)
   const [showDetailsModal, setShowDetailsModal] = useState(false)
@@ -68,23 +66,51 @@ export default function ShipmentsPage() {
   const [currentPage, setCurrentPage] = useState(1)
   const [itemsPerPage, setItemsPerPage] = useState(10)
 
-  const shipments: Shipment[] = Array.isArray(data) ? data : data?.data || data?.shipments || []
+  useEffect(() => {
+    const handler = setTimeout(() => setDebouncedSearch(searchTerm.trim()), 400)
+    return () => clearTimeout(handler)
+  }, [searchTerm])
 
-  const filteredShipments = shipments.filter((shipment) => {
-    const matchesSearch =
-      shipment.trackingId?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      shipment.customerName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      shipment.destination?.toLowerCase().includes(searchTerm.toLowerCase())
+  useEffect(() => {
+    setCurrentPage(1)
+  }, [debouncedSearch, statusFilter])
 
-    const matchesStatus = statusFilter === "all" || shipment.status === statusFilter
+  const { data, error, isLoading, mutate, isValidating } = useSWR(
+    ["admin-shipments", currentPage, itemsPerPage, debouncedSearch, statusFilter],
+    async ([, page, limit, search, status]) => {
+      const params: Record<string, any> = { page, limit }
+      if (search) params.search = search
+      if (status !== "all") params.status = status
+      return adminShipmentsAPI.getAll(params)
+    },
+    {
+      keepPreviousData: true,
+      refreshInterval: 30000,
+      revalidateOnFocus: true,
+      revalidateOnReconnect: true,
+    },
+  )
 
-    return matchesSearch && matchesStatus
-  })
+  const shipments: Shipment[] = data?.data || data?.shipments || []
+  const pagination = data?.pagination || {
+    currentPage,
+    totalPages: 1,
+    totalItems: shipments.length,
+    itemsPerPage,
+  }
 
-  const totalPages = Math.ceil(filteredShipments.length / itemsPerPage)
-  const startIndex = (currentPage - 1) * itemsPerPage
-  const endIndex = startIndex + itemsPerPage
-  const paginatedShipments = filteredShipments.slice(startIndex, endIndex)
+  const resolvedCurrentPage = pagination.currentPage || currentPage
+  const resolvedItemsPerPage = pagination.itemsPerPage || itemsPerPage
+  const totalPages = pagination.totalPages || 1
+  const totalItems = pagination.totalItems ?? shipments.length
+  const startIndex =
+    shipments.length === 0 ? 0 : (resolvedCurrentPage - 1) * resolvedItemsPerPage + 1
+  const endIndex = shipments.length === 0 ? 0 : startIndex + shipments.length - 1
+
+  const handlePageChange = (page: number) => {
+    if (page < 1 || page > totalPages) return
+    setCurrentPage(page)
+  }
 
   const handleRefresh = async () => {
     setIsRefreshing(true)
@@ -114,30 +140,14 @@ export default function ShipmentsPage() {
 
     setIsSubmitting(true)
     try {
-      const token = typeof window !== "undefined" ? localStorage.getItem("authToken") : null
-      const headers: Record<string, string> = {
-        "Content-Type": "application/json",
+      if (!editStatus) {
+        alert("يرجى اختيار الحالة الجديدة")
+        return
       }
-      if (token) {
-        headers["x-auth-token"] = token
-        headers["Authorization"] = `Bearer ${token}`
-      }
-
-      const response = await fetch(`/api/proxy/api/admin/shipments/${selectedShipment._id}`, {
-        method: "PATCH",
-        headers,
-        credentials: "include",
-        body: JSON.stringify({ status: editStatus }),
-      })
-
-      if (response.ok) {
-        await mutate()
-        setShowEditModal(false)
-        setSelectedShipment(null)
-      } else {
-        const error = await response.json()
-        alert(error.message || "فشل في تحديث الحالة")
-      }
+      await adminShipmentsAPI.updateStatus(selectedShipment._id, editStatus)
+      await mutate()
+      setShowEditModal(false)
+      setSelectedShipment(null)
     } catch (error) {
       console.error("Error updating status:", error)
       alert("حدث خطأ أثناء تحديث الحالة")
@@ -182,25 +192,9 @@ export default function ShipmentsPage() {
     }
   }
 
-  const getStatusBadge = (status: string) => {
-    const statusConfig: Record<string, { color: string; icon: any; label: string }> = {
-      "قيد الانتظار": { color: "bg-yellow-100 text-yellow-700 border-yellow-200", icon: Clock, label: "قيد الانتظار" },
-      "قيد التوصيل": { color: "bg-blue-100 text-blue-700 border-blue-200", icon: Truck, label: "قيد التوصيل" },
-      "تم التسليم": { color: "bg-green-100 text-green-700 border-green-200", icon: CheckCircle, label: "تم التسليم" },
-      ملغي: { color: "bg-red-100 text-red-700 border-red-200", icon: XCircle, label: "ملغي" },
-      "قيد المعالجة": {
-        color: "bg-purple-100 text-purple-700 border-purple-200",
-        icon: Package,
-        label: "قيد المعالجة",
-      },
-      راجع: {
-        color: "bg-orange-100 text-orange-700 border-orange-200",
-        icon: RotateCcw,
-        label: "راجع",
-      },
-    }
-
-    const config = statusConfig[status] || statusConfig["قيد الانتظار"]
+  const getStatusBadge = (status?: string) => {
+    const normalized = status?.toUpperCase() || "PENDING"
+    const config = statusMeta[normalized] || statusMeta["PENDING"]
     const Icon = config.icon
 
     return (
@@ -270,13 +264,11 @@ export default function ShipmentsPage() {
                   onChange={(e) => setStatusFilter(e.target.value)}
                   className="px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
                 >
-                  <option value="all">جميع الحالات</option>
-                  <option value="قيد الانتظار">قيد الانتظار</option>
-                  <option value="قيد المعالجة">قيد المعالجة</option>
-                  <option value="قيد التوصيل">قيد التوصيل</option>
-                  <option value="تم التسليم">تم التسليم</option>
-                  <option value="راجع">راجع</option>
-                  <option value="ملغي">ملغي</option>
+                  {statusOptions.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
                 </select>
               </div>
             </div>
@@ -312,7 +304,7 @@ export default function ShipmentsPage() {
             </div>
           )}
 
-          {!isLoading && !error && filteredShipments.length === 0 && (
+          {!isLoading && !error && shipments.length === 0 && (
             <div className="bg-white/90 backdrop-blur-sm rounded-2xl p-12 shadow-lg border border-white/20">
               <div className="flex flex-col items-center justify-center text-center space-y-4">
                 <Package className="w-16 h-16 text-gray-400" />
@@ -322,23 +314,16 @@ export default function ShipmentsPage() {
                     ? "لم يتم العثور على أي شحنات تطابق معايير البحث"
                     : "لا توجد شحنات في النظام حالياً"}
                 </p>
-                {shipments.length > 0 && (
-                  <p className="text-sm text-gray-500">
-                    تم جلب {shipments.length} شحنة من API ولكن لا يوجد تطابق مع الفلتر
-                  </p>
-                )}
               </div>
             </div>
           )}
 
-          {!isLoading && !error && filteredShipments.length > 0 && (
+          {!isLoading && !error && shipments.length > 0 && (
             <>
               <div className="bg-blue-50 border border-blue-200 rounded-xl p-4">
                 <p className="text-blue-800 text-sm">
-                  <strong>تم جلب {shipments.length} شحنة من API</strong>
-                  {filteredShipments.length !== shipments.length && (
-                    <span> • عرض {filteredShipments.length} بعد التصفية</span>
-                  )}
+                  <strong>تم جلب {totalItems} شحنة من API</strong>
+                  {shipments.length !== totalItems && <span> • عرض {shipments.length} في هذه الصفحة</span>}
                 </p>
               </div>
 
@@ -347,9 +332,16 @@ export default function ShipmentsPage() {
                 <div className="border-b border-gray-200 px-6 py-4 bg-gray-50">
                   <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
                     <div className="text-sm text-gray-600">
-                      عرض <span className="font-semibold text-gray-900">{startIndex + 1}</span> إلى{" "}
-                      <span className="font-semibold text-gray-900">{Math.min(endIndex, filteredShipments.length)}</span> من{" "}
-                      <span className="font-semibold text-gray-900">{filteredShipments.length}</span> شحنة
+                      {shipments.length === 0 ? (
+                        <span>لا توجد بيانات</span>
+                      ) : (
+                        <>
+                          عرض{" "}
+                          <span className="font-semibold text-gray-900">{startIndex}</span> إلى{" "}
+                          <span className="font-semibold text-gray-900">{endIndex}</span> من{" "}
+                          <span className="font-semibold text-gray-900">{totalItems}</span> شحنة
+                        </>
+                      )}
                     </div>
 
                     <div className="flex items-center gap-2">
@@ -372,15 +364,15 @@ export default function ShipmentsPage() {
 
                     <div className="flex items-center gap-2">
                       <button
-                        onClick={() => setCurrentPage(1)}
-                        disabled={currentPage === 1}
+                        onClick={() => handlePageChange(1)}
+                        disabled={resolvedCurrentPage === 1}
                         className="px-3 py-2 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                       >
                         الأول
                       </button>
                       <button
-                        onClick={() => setCurrentPage(currentPage - 1)}
-                        disabled={currentPage === 1}
+                        onClick={() => handlePageChange(resolvedCurrentPage - 1)}
+                        disabled={resolvedCurrentPage === 1}
                         className="p-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                       >
                         <ChevronRight className="w-5 h-5" />
@@ -392,7 +384,7 @@ export default function ShipmentsPage() {
                             return (
                               page === 1 ||
                               page === totalPages ||
-                              (page >= currentPage - 1 && page <= currentPage + 1)
+                              (page >= resolvedCurrentPage - 1 && page <= resolvedCurrentPage + 1)
                             )
                           })
                           .map((page, index, array) => {
@@ -403,9 +395,9 @@ export default function ShipmentsPage() {
                                   <span className="px-2 text-gray-500">...</span>
                                 )}
                                 <button
-                                  onClick={() => setCurrentPage(page)}
+                                  onClick={() => handlePageChange(page)}
                                   className={`min-w-[2.5rem] px-3 py-2 rounded-lg text-sm font-medium transition-all ${
-                                    currentPage === page
+                                    resolvedCurrentPage === page
                                       ? "bg-gradient-to-r from-emerald-500 to-teal-600 text-white shadow-lg"
                                       : "border border-gray-300 text-gray-700 hover:bg-gray-100"
                                   }`}
@@ -418,15 +410,15 @@ export default function ShipmentsPage() {
                       </div>
 
                       <button
-                        onClick={() => setCurrentPage(currentPage + 1)}
-                        disabled={currentPage === totalPages}
+                        onClick={() => handlePageChange(resolvedCurrentPage + 1)}
+                        disabled={resolvedCurrentPage === totalPages}
                         className="p-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                       >
                         <ChevronLeft className="w-5 h-5" />
                       </button>
                       <button
-                        onClick={() => setCurrentPage(totalPages)}
-                        disabled={currentPage === totalPages}
+                        onClick={() => handlePageChange(totalPages)}
+                        disabled={resolvedCurrentPage === totalPages}
                         className="px-3 py-2 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                       >
                         الأخير
@@ -452,7 +444,22 @@ export default function ShipmentsPage() {
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-100">
-                      {paginatedShipments.map((shipment, index) => (
+                      {shipments.map((shipment, index) => {
+                        const customerName =
+                          shipment.customerName ||
+                          `${shipment.customerId?.firstName || ""} ${shipment.customerId?.lastName || ""}`.trim() ||
+                          "عميل"
+                        const customerEmail = shipment.customerEmail || shipment.customerId?.email || "غير متوفر"
+                        const destination =
+                          shipment.destination ||
+                          shipment.receiverAddress?.city ||
+                          shipment.receiverAddress?.location ||
+                          shipment.receiverAddress?.country ||
+                          "غير محدد"
+                        const tracking = shipment.trackingId || shipment.companyshipmentid || "غير متوفر"
+                        const orderValue = Number(shipment.ordervalue ?? shipment.totalprice ?? 0)
+                        const totalPrice = Number(shipment.totalprice ?? shipment.ordervalue ?? 0)
+                        return (
                         <motion.tr
                           key={shipment._id}
                           initial={{ opacity: 0, y: 20 }}
@@ -465,45 +472,49 @@ export default function ShipmentsPage() {
                               <div className="w-10 h-10 bg-gradient-to-br from-emerald-500 to-teal-600 rounded-lg flex items-center justify-center">
                                 <Package className="w-5 h-5 text-white" />
                               </div>
-                              <span className="font-bold text-gray-900">{shipment.trackingId}</span>
+                              <span className="font-bold text-gray-900">{tracking}</span>
                             </div>
                           </td>
                           <td className="px-6 py-4">
-                            <span className="text-gray-900 font-medium">{shipment.customerName}</span>
+                            <span className="text-gray-900 font-medium">{customerName}</span>
                           </td>
                           <td className="px-6 py-4">
                             <div className="flex items-center gap-2 text-gray-600">
                               <MapPin className="w-4 h-4 text-emerald-600 flex-shrink-0" />
-                              <span className="text-sm">{shipment.destination}</span>
+                              <span className="text-sm">{destination}</span>
                             </div>
                           </td>
                           <td className="px-6 py-4">
                             <div className="flex items-center gap-2 text-gray-600">
                               <Truck className="w-4 h-4 text-blue-600 flex-shrink-0" />
-                              <span className="text-sm">{shipment.shapmentCompany}</span>
+                              <span className="text-sm">{shipment.shapmentCompany || "غير محدد"}</span>
                             </div>
                           </td>
                           <td className="px-6 py-4">
                             <div className="flex items-center gap-2 text-gray-600">
                               <Mail className="w-4 h-4 text-purple-600 flex-shrink-0" />
-                              <span className="text-sm">{shipment.customerEmail || 'غير متوفر'}</span>
+                              <span className="text-sm">{customerEmail}</span>
                             </div>
                           </td>
                           <td className="px-6 py-4">{getStatusBadge(shipment.status)}</td>
                           <td className="px-6 py-4">
                             <span className="text-sm font-semibold text-gray-700">
-                              {shipment.ordervalue.toFixed(2)} ر.س
+                              {orderValue.toFixed(2)} ر.س
                             </span>
                           </td>
                           <td className="px-6 py-4">
                             <span className="text-base font-bold text-emerald-600">
-                              {shipment.totalprice.toFixed(2)} ر.س
+                              {totalPrice.toFixed(2)} ر.س
                             </span>
                           </td>
                           <td className="px-6 py-4">
                             <div className="flex items-center gap-2 text-gray-600">
                               <Clock className="w-4 h-4 text-gray-400 flex-shrink-0" />
-                              <span className="text-sm">{new Date(shipment.createdAt).toLocaleDateString("ar-SA")}</span>
+                              <span className="text-sm">
+                                {shipment.createdAt
+                                  ? new Date(shipment.createdAt).toLocaleDateString("ar-SA")
+                                  : "غير متاح"}
+                              </span>
                             </div>
                           </td>
                           <td className="px-6 py-4">
@@ -538,7 +549,7 @@ export default function ShipmentsPage() {
                             </div>
                           </td>
                         </motion.tr>
-                      ))}
+                      )})}
                     </tbody>
                   </table>
                 </div>
@@ -667,12 +678,13 @@ export default function ShipmentsPage() {
                       onChange={(e) => setEditStatus(e.target.value)}
                       className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
                     >
-                      <option value="قيد الانتظار">قيد الانتظار</option>
-                      <option value="قيد المعالجة">قيد المعالجة</option>
-                      <option value="قيد التوصيل">قيد التوصيل</option>
-                      <option value="تم التسليم">تم التسليم</option>
-                      <option value="راجع">راجع</option>
-                      <option value="ملغي">ملغي</option>
+                      {statusOptions
+                        .filter((option) => option.value !== "all")
+                        .map((option) => (
+                          <option key={option.value} value={option.value}>
+                            {option.label}
+                          </option>
+                        ))}
                     </select>
                   </div>
 

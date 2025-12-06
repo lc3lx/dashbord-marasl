@@ -1,12 +1,6 @@
 const API_BASE_URL = (process.env.NEXT_PUBLIC_API_URL || "").replace(/\/$/, "")
 
 const shouldUseProxy = () => {
-  if (typeof window !== "undefined") {
-    if (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1") {
-      return true
-    }
-  }
-
   return process.env.NEXT_PUBLIC_USE_PROXY === "true"
 }
 
@@ -50,6 +44,33 @@ const apiClient = {
 
     const response = await fetch(url, {
       method: "POST",
+      headers,
+      body: JSON.stringify(data),
+      credentials: "include",
+    })
+
+    if (!response.ok) {
+      const error = await response.json()
+      throw new Error(error.error || error.message || "حدث خطأ")
+    }
+
+    return response.json()
+  },
+
+  async patch(endpoint: string, data: any) {
+    const { url } = resolveRequestUrl(endpoint)
+
+    const token = typeof window !== "undefined" ? localStorage.getItem("authToken") : null
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+    }
+    if (token) {
+      headers["x-auth-token"] = token
+      headers["Authorization"] = `Bearer ${token}`
+    }
+
+    const response = await fetch(url, {
+      method: "PATCH",
       headers,
       body: JSON.stringify(data),
       credentials: "include",
@@ -221,6 +242,12 @@ export const shipmentsAPI = {
   delete: (id: string) => apiClient.post(`/api/shipment/${id}`, {}),
   updateStatus: (id: string, status: string) => apiClient.post(`/api/shipment/${id}/status`, { status }),
   track: (trackingNumber: string) => apiClient.get(`/api/shipment/track/${trackingNumber}`),
+}
+
+export const adminShipmentsAPI = {
+  getAll: (params?: any) => apiClient.get("/api/admin/shipments", params),
+  updateStatus: (id: string, status: string) =>
+    apiClient.patch(`/api/admin/shipments/${id}/status`, { status }),
 }
 
 export const walletsAPI = {
