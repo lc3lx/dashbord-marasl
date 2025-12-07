@@ -278,7 +278,8 @@ export const adminShipmentsAPI = {
 }
 
 export const adminWalletsAPI = {
-  getPendingTransfers: () => apiClient.get("/api/admin/wallets/pending-transfers"),
+  getPendingTransfers: (params?: any) => apiClient.get("/api/admin/wallets/pending-transfers", params),
+  getTransfers: (params?: any) => apiClient.get("/api/admin/wallets/transfers", params),
   approveBankTransfer: (transactionId: string, payload: { approved: boolean; notes?: string }) =>
     apiClient.put(`/api/admin/wallets/approve-bank-transfer/${transactionId}`, payload),
 }

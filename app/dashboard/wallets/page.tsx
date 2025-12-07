@@ -59,16 +59,33 @@ interface TransactionWithCustomer extends Transaction {
 
 interface BankTransferRequest {
   _id: string
-  customerId: string
+  customerId?: string
   customerName: string
   customerEmail: string
   amount: number
-  bankName: string
-  accountNumber: string
-  accountHolder: string
-  status: "pending" | "approved" | "rejected"
-  requestDate: string
+  status: string
+  createdAt: string
   notes?: string
+  bankReceipt?: string
+  bankName?: string
+  accountNumber?: string
+  accountHolder?: string
+}
+
+interface TransferStats {
+  pending: number
+  completed: number
+  rejected: number
+  approved: number
+  failed: number
+}
+
+const DEFAULT_TRANSFER_STATS: TransferStats = {
+  pending: 0,
+  completed: 0,
+  rejected: 0,
+  approved: 0,
+  failed: 0,
 }
 
 export default function WalletsPage() {
@@ -79,54 +96,149 @@ export default function WalletsPage() {
   const [error, setError] = useState<string | null>(null)
   const [allTransactions, setAllTransactions] = useState<TransactionWithCustomer[]>([])
   const [showTransactions, setShowTransactions] = useState(false)
-  const [bankTransferRequests, setBankTransferRequests] = useState<BankTransferRequest[]>([
-    {
-      _id: "1",
-      customerId: "user1",
-      customerName: "محمد أحمد",
-      customerEmail: "mohammed@example.com",
-      amount: 5000,
-      bankName: "البنك الأهلي السعودي",
-      accountNumber: "1234567890",
-      accountHolder: "محمد أحمد علي",
-      status: "pending",
-      requestDate: new Date().toISOString(),
-      notes: "طلب تحويل للرصيد",
-    },
-    {
-      _id: "2",
-      customerId: "user2",
-      customerName: "فاطمة خالد",
-      customerEmail: "fatima@example.com",
-      amount: 3500,
-      bankName: "بنك الراجحي",
-      accountNumber: "9876543210",
-      accountHolder: "فاطمة خالد محمد",
-      status: "pending",
-      requestDate: new Date(Date.now() - 86400000).toISOString(),
-      notes: "سحب من المحفظة",
-    },
-    {
-      _id: "3",
-      customerId: "user3",
-      customerName: "عبدالله سالم",
-      customerEmail: "abdullah@example.com",
-      amount: 7500,
-      bankName: "بنك الرياض",
-      accountNumber: "5555666677",
-      accountHolder: "عبدالله سالم أحمد",
-      status: "pending",
-      requestDate: new Date(Date.now() - 172800000).toISOString(),
-      notes: "تحويل عاجل",
-    },
-  ])
-
+  const [bankTransferRequests, setBankTransferRequests] = useState<BankTransferRequest[]>([])
+  const [bankTransfersLoading, setBankTransfersLoading] = useState(false)
+  const [bankTransfersError, setBankTransfersError] = useState<string | null>(null)
+  const [transferStats, setTransferStats] = useState<TransferStats>(DEFAULT_TRANSFER_STATS)
+  const [transferStatusFilter, setTransferStatusFilter] = useState<"all" | "pending" | "completed" | "rejected" | "approved">("pending")
+  const [transferPage, setTransferPage] = useState(1)
+  const [transferPerPage, setTransferPerPage] = useState(10)
+  const [transfersPagination, setTransfersPagination] = useState({
+    total: 0,
+    page: 1,
+    pages: 1,
+    limit: 10,
+  })
+  const [transferActionLoading, setTransferActionLoading] = useState<string | null>(null)
+  const [pendingPreview, setPendingPreview] = useState<BankTransferRequest[]>([])
+  const [pendingPreviewLoading, setPendingPreviewLoading] = useState(false)
+  const [pendingPreviewError, setPendingPreviewError] = useState<string | null>(null)
   const [currentPage, setCurrentPage] = useState(1)
   const [itemsPerPage, setItemsPerPage] = useState(10)
   const [currentTransactionsPage, setCurrentTransactionsPage] = useState(1)
   const [transactionsPerPage, setTransactionsPerPage] = useState(10)
+  const transferStatusOptions = [
+    { value: "pending", label: "معلقة" },
+    { value: "completed", label: "مكتملة" },
+    { value: "approved", label: "معتمدة" },
+    { value: "rejected", label: "مرفوضة" },
+    { value: "failed", label: "فاشلة" },
+    { value: "all", label: "الكل" },
+  ] as const
 
+  const normalizeTransfer = useCallback((item: any): BankTransferRequest => {
+    const customer = item.customerId
+    const formattedName = `${customer?.firstName || ""}${customer?.lastName ? ` ${customer.lastName}` : ""}`.trim()
 
+    return {
+      _id: item._id,
+      customerId: customer?._id || item.customerId,
+      customerName:
+        formattedName ||
+        customer?.company_name_ar ||
+        customer?.company_name_en ||
+        customer?.email ||
+        "عميل غير معروف",
+      customerEmail: customer?.email || "غير متوفر",
+      amount: Number(item.amount) || 0,
+      status: item.status || "pending",
+      createdAt: item.createdAt || item.updatedAt || new Date().toISOString(),
+      notes: item.notes || item.description || "",
+      bankReceipt: item.bankReceipt,
+      bankName: item.bankName,
+      accountNumber: item.accountNumber,
+      accountHolder: item.accountHolder,
+    }
+  }, [])
+
+  const fetchBankTransfers = useCallback(async () => {
+    try {
+      setBankTransfersLoading(true)
+      setBankTransfersError(null)
+
+      const response = await adminWalletsAPI.getTransfers({
+        status: transferStatusFilter === "all" ? undefined : transferStatusFilter,
+        page: transferPage,
+        limit: transferPerPage,
+      })
+
+      const rawItems = Array.isArray(response?.data)
+        ? response.data
+        : Array.isArray(response?.items)
+          ? response.items
+          : Array.isArray(response?.data?.items)
+            ? response.data.items
+            : []
+
+      const pagination =
+        response?.pagination ||
+        response?.data?.pagination || {
+          total: rawItems.length,
+          page: transferPage,
+          pages: 1,
+          limit: transferPerPage,
+        }
+
+      const stats =
+        response?.statusCounts ||
+        response?.data?.statusCounts ||
+        DEFAULT_TRANSFER_STATS
+
+      const normalizedItems: BankTransferRequest[] = rawItems.map(normalizeTransfer)
+
+      setBankTransferRequests(normalizedItems)
+      setTransfersPagination({
+        total: pagination.total || normalizedItems.length,
+        page: pagination.page || transferPage,
+        pages: pagination.pages || 1,
+        limit: pagination.limit || transferPerPage,
+      })
+      setTransferStats(stats)
+    } catch (err: any) {
+      console.error("خطأ في جلب تحويلات البنوك:", err)
+      setBankTransfersError(err.message || "فشل تحميل طلبات التحويل البنكي")
+      setBankTransferRequests([])
+      setTransfersPagination({
+        total: 0,
+        page: 1,
+        pages: 1,
+        limit: transferPerPage,
+      })
+      setTransferStats(DEFAULT_TRANSFER_STATS)
+    } finally {
+      setBankTransfersLoading(false)
+    }
+  }, [transferStatusFilter, transferPage, transferPerPage, normalizeTransfer])
+
+  const fetchPendingPreview = useCallback(async () => {
+    try {
+      setPendingPreviewLoading(true)
+      setPendingPreviewError(null)
+      const response = await adminWalletsAPI.getPendingTransfers({ page: 1, limit: 5 })
+      const rawItems = Array.isArray(response?.data)
+        ? response.data
+        : Array.isArray(response?.items)
+          ? response.items
+          : Array.isArray(response?.data?.items)
+            ? response.data.items
+            : []
+      setPendingPreview(rawItems.map(normalizeTransfer))
+    } catch (err: any) {
+      console.error("خطأ في جلب الطلبات المعلقة:", err)
+      setPendingPreview([])
+      setPendingPreviewError(err.message || "فشل تحميل الطلبات المعلقة")
+    } finally {
+      setPendingPreviewLoading(false)
+    }
+  }, [normalizeTransfer])
+
+  useEffect(() => {
+    fetchBankTransfers()
+  }, [fetchBankTransfers])
+
+  useEffect(() => {
+    fetchPendingPreview()
+  }, [fetchPendingPreview])
   useEffect(() => {
     const fetchWalletsWithCustomers = async () => {
       try {
@@ -259,8 +371,13 @@ export default function WalletsPage() {
     )
   }
 
-  const pendingTransfers = bankTransferRequests.filter((req) => req.status === "pending")
+  const pendingTransfers = pendingPreview.length
+    ? pendingPreview
+    : bankTransferRequests.filter((req) => req.status === "pending")
   const totalPendingAmount = pendingTransfers.reduce((sum, req) => sum + req.amount, 0)
+  const totalTransfersPages = Math.ceil(transfersPagination.total / transferPerPage) || 1
+  const transfersStartIndex = (transfersPagination.page - 1) * transferPerPage
+  const transfersEndIndex = transfersStartIndex + bankTransferRequests.length
 
   const totalWalletsPages = Math.ceil(filteredWallets.length / itemsPerPage)
   const walletsStartIndex = (currentPage - 1) * itemsPerPage
@@ -419,6 +536,218 @@ export default function WalletsPage() {
             </motion.div>
           </div>
 
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.15 }}
+            className="bg-white rounded-2xl shadow-lg border border-gray-200 p-6"
+          >
+            <div className="flex flex-col gap-4">
+              <div className="flex flex-wrap items-center gap-4 justify-between">
+                <div>
+                  <h2 className="text-xl font-bold text-gray-900 flex items-center gap-3">
+                    <Building2 className="w-5 h-5 text-amber-500" />
+                    إدارة طلبات التحويل البنكي
+                  </h2>
+                  <p className="text-gray-500 text-sm">تحكم كامل بطلبات العملاء مع التصفية حسب الحالة</p>
+                </div>
+                <div className="flex flex-wrap gap-3 items-center">
+                  <select
+                    value={transferStatusFilter}
+                    onChange={(e) => {
+                      setTransferStatusFilter(e.target.value as typeof transferStatusFilter)
+                      setTransferPage(1)
+                    }}
+                    className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-amber-500"
+                  >
+                    {transferStatusOptions.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                  <select
+                    value={transferPerPage}
+                    onChange={(e) => {
+                      setTransferPerPage(Number(e.target.value))
+                      setTransferPage(1)
+                    }}
+                    className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-amber-500"
+                  >
+                    {[5, 10, 20, 50].map((size) => (
+                      <option key={size} value={size}>
+                        {size} صفوف
+                      </option>
+                    ))}
+                  </select>
+                  <button
+                    onClick={fetchBankTransfers}
+                    className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-amber-500 text-white hover:bg-amber-600 transition"
+                    disabled={bankTransfersLoading}
+                  >
+                    <RefreshCw className={`w-4 h-4 ${bankTransfersLoading ? "animate-spin" : ""}`} />
+                    تحديث
+                  </button>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
+                {(
+                  [
+                    { label: "معلقة", value: transferStats.pending, color: "text-amber-600", bg: "bg-amber-50" },
+                    { label: "مكتملة", value: transferStats.completed, color: "text-green-600", bg: "bg-green-50" },
+                    { label: "معتمدة", value: transferStats.approved, color: "text-blue-600", bg: "bg-blue-50" },
+                    { label: "مرفوضة", value: transferStats.rejected, color: "text-red-600", bg: "bg-red-50" },
+                    { label: "فاشلة", value: transferStats.failed, color: "text-gray-600", bg: "bg-gray-100" },
+                  ] as const
+                ).map((stat) => (
+                  <div key={stat.label} className={`p-4 rounded-2xl border ${stat.bg}`}>
+                    <p className="text-sm text-gray-500">{stat.label}</p>
+                    <p className={`text-2xl font-bold ${stat.color}`}>{stat.value.toLocaleString()}</p>
+                  </div>
+                ))}
+              </div>
+              <div className="overflow-x-auto border rounded-2xl">
+                {bankTransfersLoading ? (
+                  <div className="flex items-center justify-center py-12">
+                    <Loader2 className="w-6 h-6 text-amber-500 animate-spin" />
+                  </div>
+                ) : bankTransfersError ? (
+                  <div className="p-6 text-center text-red-600">{bankTransfersError}</div>
+                ) : bankTransferRequests.length === 0 ? (
+                  <div className="p-6 text-center text-gray-500">لا توجد طلبات مطابقة للتصفية الحالية</div>
+                ) : (
+                  <>
+                    <table className="w-full">
+                      <thead className="bg-gray-50 text-right text-sm text-gray-600">
+                        <tr>
+                          <th className="px-4 py-3">العميل</th>
+                          <th className="px-4 py-3">المبلغ</th>
+                          <th className="px-4 py-3">الحالة</th>
+                          <th className="px-4 py-3">تاريخ الطلب</th>
+                          <th className="px-4 py-3">الملاحظات</th>
+                          <th className="px-4 py-3 text-center">الإجراءات</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-100">
+                        {bankTransferRequests.map((request) => (
+                          <tr key={request._id} className="hover:bg-gray-50/80">
+                            <td className="px-4 py-3">
+                              <div>
+                                <p className="font-semibold text-gray-900">{request.customerName}</p>
+                                <p className="text-xs text-gray-500">{request.customerEmail}</p>
+                              </div>
+                            </td>
+                            <td className="px-4 py-3">
+                              <span className="font-bold text-gray-900">{request.amount.toLocaleString()} ر.س</span>
+                            </td>
+                            <td className="px-4 py-3">
+                              <span
+                                className={`px-3 py-1 rounded-full text-xs font-semibold capitalize ${
+                                  request.status === "completed"
+                                    ? "bg-green-100 text-green-700"
+                                    : request.status === "rejected"
+                                      ? "bg-red-100 text-red-700"
+                                      : request.status === "approved"
+                                        ? "bg-blue-100 text-blue-700"
+                                        : "bg-amber-100 text-amber-700"
+                                }`}
+                              >
+                                {request.status}
+                              </span>
+                            </td>
+                            <td className="px-4 py-3 text-sm text-gray-600">
+                              {new Date(request.createdAt).toLocaleDateString("ar-SA", {
+                                year: "numeric",
+                                month: "short",
+                                day: "numeric",
+                                hour: "2-digit",
+                                minute: "2-digit",
+                              })}
+                            </td>
+                            <td className="px-4 py-3 text-sm text-gray-600">
+                              {request.notes?.slice(0, 60) || "لا توجد ملاحظات"}
+                            </td>
+                            <td className="px-4 py-3">
+                              <div className="flex items-center justify-center gap-2">
+                                <button
+                                  onClick={() => handleApproveTransfer(request._id)}
+                                  disabled={transferActionLoading === request._id}
+                                  className="px-3 py-1 text-sm rounded-lg bg-green-100 text-green-700 hover:bg-green-200 disabled:opacity-50"
+                                >
+                                  موافقة
+                                </button>
+                                <button
+                                  onClick={() => handleRejectTransfer(request._id)}
+                                  disabled={transferActionLoading === request._id}
+                                  className="px-3 py-1 text-sm rounded-lg bg-red-100 text-red-700 hover:bg-red-200 disabled:opacity-50"
+                                >
+                                  رفض
+                                </button>
+                                {request.bankReceipt && (
+                                  <a
+                                    href={request.bankReceipt}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="px-3 py-1 text-sm rounded-lg bg-gray-100 text-gray-700 hover:bg-gray-200"
+                                  >
+                                    عرض الإيصال
+                                  </a>
+                                )}
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                    <div className="border-t px-4 py-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between text-sm text-gray-600">
+                      <div>
+                        عرض{" "}
+                        <span className="font-semibold text-gray-900">
+                          {transfersStartIndex + 1} - {Math.min(transfersEndIndex, transfersPagination.total)}
+                        </span>{" "}
+                        من{" "}
+                        <span className="font-semibold text-gray-900">{transfersPagination.total.toLocaleString()}</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => setTransferPage(1)}
+                          disabled={transferPage === 1}
+                          className="px-3 py-1 border rounded-lg disabled:opacity-50"
+                        >
+                          الأول
+                        </button>
+                        <button
+                          onClick={() => setTransferPage((prev) => Math.max(prev - 1, 1))}
+                          disabled={transferPage === 1}
+                          className="p-2 border rounded-lg disabled:opacity-50"
+                        >
+                          <ChevronRight className="w-4 h-4" />
+                        </button>
+                        <span className="font-semibold text-gray-900">
+                          {transferPage} / {totalTransfersPages}
+                        </span>
+                        <button
+                          onClick={() => setTransferPage((prev) => Math.min(prev + 1, totalTransfersPages))}
+                          disabled={transferPage === totalTransfersPages}
+                          className="p-2 border rounded-lg disabled:opacity-50"
+                        >
+                          <ChevronLeft className="w-4 h-4" />
+                        </button>
+                        <button
+                          onClick={() => setTransferPage(totalTransfersPages)}
+                          disabled={transferPage === totalTransfersPages}
+                          className="px-3 py-1 border rounded-lg disabled:opacity-50"
+                        >
+                          الأخير
+                        </button>
+                      </div>
+                    </div>
+                  </>
+                )}
+              </div>
+            </div>
+          </motion.div>
+
           {pendingTransfers.length > 0 && (
             <motion.div
               initial={{ opacity: 0, y: 20 }}
@@ -503,7 +832,7 @@ export default function WalletsPage() {
                           <div className="flex items-center gap-2 text-gray-600">
                             <Calendar className="w-4 h-4" />
                             <span className="text-sm">
-                              {new Date(request.requestDate).toLocaleDateString("ar-SA", {
+                              {new Date(request.createdAt).toLocaleDateString("ar-SA", {
                                 year: "numeric",
                                 month: "short",
                                 day: "numeric",
