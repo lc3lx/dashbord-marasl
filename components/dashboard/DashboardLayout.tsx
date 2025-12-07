@@ -13,8 +13,8 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
   const [isMobileOpen, setIsMobileOpen] = useState(false)
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100/50 flex flex-row-reverse" dir="rtl">
-      {/* Sidebar - على اليمين وثابت */}
+    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100/50 flex flex-row" dir="rtl">
+      {/* Sidebar - على اليمين وثابت (في RTL أول عنصر يظهر يمين) */}
       <DashboardSidebar isMobileOpen={isMobileOpen} setIsMobileOpen={setIsMobileOpen} />
 
       {/* Main Content - يأخذ المساحة المتبقية */}

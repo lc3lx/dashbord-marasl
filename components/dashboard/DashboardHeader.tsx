@@ -142,7 +142,7 @@ export default function DashboardHeader({ isMobileOpen, setIsMobileOpen }: Dashb
 
   return (
     <header className="sticky top-0 z-40 bg-white/80 backdrop-blur border-b border-gray-200 px-6 py-3">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between flex-row-reverse">
         <button
           onClick={() => {
             console.log("[v0] Header - Menu button clicked, isMobileOpen:", isMobileOpen)
@@ -156,7 +156,7 @@ export default function DashboardHeader({ isMobileOpen, setIsMobileOpen }: Dashb
         {/* Search */}
         <div className="flex-1 max-w-xl" ref={searchRef}>
           <div className="relative">
-            <Search className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={18} />
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={18} />
             <input
               type="text"
               placeholder="ابحث في الشحنات، الطلبات، المستخدمين..."
@@ -168,7 +168,7 @@ export default function DashboardHeader({ isMobileOpen, setIsMobileOpen }: Dashb
             {searchQuery && (
               <button
                 onClick={handleClearSearch}
-                className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors"
+                className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors"
               >
                 <X size={18} />
               </button>

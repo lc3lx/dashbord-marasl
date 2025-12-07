@@ -182,7 +182,7 @@ export default function DashboardSidebar({ isMobileOpen, setIsMobileOpen }: Dash
         className={`
           bg-white/95 backdrop-blur-xl border-l border-gray-200/60 shadow-xl transition-all duration-300
           h-screen overflow-y-auto shrink-0 z-[80]
-          fixed right-0 top-0 lg:sticky
+          fixed right-0 top-0 lg:sticky lg:right-0 lg:left-auto lg:ml-auto
           ${isMobileOpen ? "translate-x-0" : "translate-x-full lg:translate-x-0"}
         `}
         style={{

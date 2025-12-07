@@ -228,6 +228,38 @@ const apiClient = {
       throw error
     }
   },
+
+  async delete(endpoint: string) {
+    const { url } = resolveRequestUrl(endpoint)
+
+    const token = typeof window !== "undefined" ? localStorage.getItem("authToken") : null
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+    }
+    if (token) {
+      headers["x-auth-token"] = token
+      headers["Authorization"] = `Bearer ${token}`
+    }
+
+    const response = await fetch(url, {
+      method: "DELETE",
+      headers,
+      credentials: "include",
+    })
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({}))
+      throw new Error((error as any).error || (error as any).message || "حدث خطأ")
+    }
+
+    // Some DELETE endpoints may return empty body
+    const text = await response.text()
+    try {
+      return text ? JSON.parse(text) : { success: true }
+    } catch {
+      return { success: true }
+    }
+  },
 }
 
 export const authAPI = {
@@ -328,8 +360,8 @@ export const shippingCompaniesAPI = {
   getAll: (params?: any) => apiClient.get("/api/shipmentcompany", params),
   getById: (id: string) => apiClient.get(`/api/shipmentcompany/${id}`),
   create: (data: any) => apiClient.post("/api/shipmentcompany", data),
-  update: (id: string, data: any) => apiClient.post(`/api/shipmentcompany/${id}`, data),
-  delete: (id: string) => apiClient.post(`/api/shipmentcompany/${id}`, {}),
+  update: (id: string, data: any) => apiClient.put(`/api/shipmentcompany/${id}`, data),
+  delete: (id: string) => apiClient.delete(`/api/shipmentcompany/${id}`),
 }
 
 export const packagesAPI = {
