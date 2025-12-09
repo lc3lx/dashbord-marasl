@@ -21,7 +21,7 @@ import {
 } from "lucide-react"
 import { motion, AnimatePresence } from "framer-motion"
 import { Input } from "@/components/ui/input"
-import { announcementsAPI, usersAPI } from "@/lib/api"
+import { announcementsAPI, usersAPI, adminNotificationsAPI } from "@/lib/api"
 
 export default function AnnouncementsPage() {
   const [searchTerm, setSearchTerm] = useState("")
@@ -251,9 +251,18 @@ export default function AnnouncementsPage() {
       }
       const created = await announcementsAPI.create(payload)
       const annId = (created && (created._id || created.id)) || null
-      if (annId && (sendToAll || (recipientEmails || "").trim() !== "" || selectedRecipientIds.length)) {
-        const emails = (recipientEmails || "").split(',').map(e => e.trim()).filter(Boolean)
-        await announcementsAPI.sendEmails(annId, { all: sendToAll, recipients: emails, recipientIds: selectedRecipientIds })
+      if (annId && (sendToAll || selectedRecipientIds.length)) {
+        const text = String(newAnnouncement.content || "").replace(/<[^>]+>/g, " ").trim()
+        if (sendToAll) {
+          await adminNotificationsAPI.create({ type: "broadcast", title: newAnnouncement.title, message: text })
+        }
+        if (selectedRecipientIds.length) {
+          await Promise.all(
+            selectedRecipientIds.map((cid) =>
+              adminNotificationsAPI.create({ type: "targeted", title: newAnnouncement.title, message: text, customerId: cid })
+            ),
+          )
+        }
       }
       await fetchAnnouncements()
       setIsAddModalOpen(false)

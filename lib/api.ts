@@ -274,6 +274,7 @@ export const dashboardAPI = {
   },
   getUsers: (params?: any) => apiClient.get("/api/admin/users", params),
   getCarrierStats: (params?: any) => apiClient.get("/api/admin/carriers/stats", params),
+  getRecentActivity: (params?: any) => apiClient.get("/api/admin/activity", params),
 }
 
 export const usersAPI = {
@@ -331,6 +332,31 @@ export const adminWalletsAPI = {
   getTransfers: (params?: any) => apiClient.get("/api/admin/wallets/transfers", params),
   approveBankTransfer: (transactionId: string, payload: { approved: boolean; notes?: string }) =>
     apiClient.put(`/api/admin/wallets/approve-bank-transfer/${transactionId}`, payload),
+  getUserWallet: (userId: string) => apiClient.get(`/api/admin/users/${userId}/wallet`),
+  addBalanceToUser: (userId: string, payload: { amount: number; description?: string }) =>
+    apiClient.post(`/api/admin/wallets/${userId}/add-balance`, payload),
+  subtractBalanceFromUser: (userId: string, payload: { amount: number; description?: string }) =>
+    apiClient.post(`/api/admin/wallets/${userId}/subtract-balance`, payload),
+}
+
+export const adminEmployeesAPI = {
+  getAll: (params?: any) => apiClient.get("/api/admin/employees", params),
+  getStats: (params?: any) => apiClient.get("/api/admin/employees/stats", params),
+  getById: (id: string) => apiClient.get(`/api/admin/employees/${id}`),
+  create: (data: any) => apiClient.post("/api/admin/employees", data),
+  update: (id: string, data: any) => apiClient.put(`/api/admin/employees/${id}`, data),
+  delete: (id: string) => apiClient.delete(`/api/admin/employees/${id}`),
+  updateStatus: (id: string, status: string) => apiClient.patch(`/api/admin/employees/${id}/status`, { status }),
+  updatePermissions: (id: string, permissions: string[]) =>
+    apiClient.patch(`/api/admin/employees/${id}/permissions`, { permissions }),
+  updatePayroll: (
+    id: string,
+    payload: { baseSalary?: number; bonuses?: number; deductions?: number; lastPayment?: string; paymentStatus?: string },
+  ) => apiClient.patch(`/api/admin/employees/${id}/payroll`, payload),
+  updateAttendance: (
+    id: string,
+    payload: { present?: number; absent?: number; late?: number; onTime?: number; totalDays?: number },
+  ) => apiClient.patch(`/api/admin/employees/${id}/attendance`, payload),
 }
 
 export const walletsAPI = {

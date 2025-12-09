@@ -20,7 +20,7 @@ import {
 } from "recharts"
 import EnhancedPrintButton11 from "@/components/print/EnhancedPrintButton11"
 import { useRouter } from 'next/navigation' // Added useRouter for navigation
-import { dashboardAPI, usersAPI, shippingCompaniesAPI, walletsAPI } from "@/lib/api" // Added walletsAPI
+import { dashboardAPI, usersAPI, adminPlatformsAPI, adminOrdersAPI, transactionsAPI } from "@/lib/api"
 
 const getStatusColor = (status: string) => {
   const colors: Record<string, string> = {
@@ -40,11 +40,11 @@ const getRandomColor = () => {
 
 interface UserData {
   walletId: string
-  userName: string | null
-  userEmail: string | null
-  balance: number | null
-  transactionCount: number | null
-  createdAt: string | null
+  userName: string
+  userEmail: string
+  balance: number
+  transactionCount: number
+  createdAt?: string
   isVerified: boolean
 }
 
@@ -58,6 +58,7 @@ export default function ReportsPage() {
   const router = useRouter() // Initialize router for back navigation
 
   const [topUsers, setTopUsers] = useState<UserData[]>([]) // State for top users
+  const [walletDaily, setWalletDaily] = useState<any[]>([])
 
   console.log("[v0] صفحة التقارير - الفترة المختارة:", selectedPeriod)
   console.log("[v0] صفحة التقارير - نوع التقرير المختار:", selectedReport)
@@ -86,58 +87,93 @@ export default function ReportsPage() {
           }
         }
 
-        const [statsResponse, usersResponse, companiesResponse, walletsResponse] = await Promise.all([
+        // Build date range params for carrier stats based on selectedPeriod/custom
+        const getRange = () => {
+          const now = new Date()
+          const start = new Date(now)
+          let startDate: Date | null = null
+          let endDate: Date | null = now
+          switch (selectedPeriod) {
+            case "today":
+              start.setHours(0, 0, 0, 0)
+              startDate = start
+              break
+            case "thisWeek": {
+              const day = now.getDay() // 0..6
+              const diff = day === 0 ? 6 : day - 1 // week starts Monday
+              start.setDate(now.getDate() - diff)
+              start.setHours(0, 0, 0, 0)
+              startDate = start
+              break
+            }
+            case "thisMonth":
+              start.setDate(1)
+              start.setHours(0, 0, 0, 0)
+              startDate = start
+              break
+            case "thisYear":
+              start.setMonth(0, 1)
+              start.setHours(0, 0, 0, 0)
+              startDate = start
+              break
+            case "custom":
+              if (customDateFrom) startDate = new Date(customDateFrom + "T00:00:00")
+              if (customDateTo) endDate = new Date(customDateTo + "T23:59:59")
+              break
+            default:
+              startDate = null
+          }
+          return { startDate, endDate }
+        }
+
+        const { startDate, endDate } = getRange()
+        const carriersParams: any = {}
+        if (startDate) carriersParams.startDate = startDate.toISOString()
+        if (endDate) carriersParams.endDate = endDate.toISOString()
+
+        const [statsResponse, usersResponse, carriersResponse, platformsResponse, ordersResponse, transactionsResponse] = await Promise.all([
           fetchWithFallback(() => dashboardAPI.getStats(), { data: {} }, "Stats API"),
-          fetchWithFallback(() => usersAPI.getAll(), { data: [] }, "Users API"),
-          fetchWithFallback(() => shippingCompaniesAPI.getAll(), [], "Companies API"),
-          fetchWithFallback(() => walletsAPI.getAll(), { result: [] }, "Wallets API"),
+          fetchWithFallback(() => usersAPI.getAll({ limit: 1000 }), { data: [] }, "Users API"),
+          fetchWithFallback(() => dashboardAPI.getCarrierStats(carriersParams), { data: { byCarrier: [], overall: {} } }, "Carrier Stats API"),
+          fetchWithFallback(() => adminPlatformsAPI.getAll(), { data: [] }, "Platforms API"),
+          fetchWithFallback(() => adminOrdersAPI.getAll({ ...carriersParams, limit: 1000 }), { data: [], pagination: { totalItems: 0 } }, "Orders API"),
+          fetchWithFallback(() => transactionsAPI.getAll({ ...carriersParams, limit: 1000 }), { data: [] }, "Transactions API"),
         ])
 
         console.log("[v0] Reports - Stats response:", statsResponse)
         console.log("[v0] Reports - Users response:", usersResponse)
-        console.log("[v0] Reports - Companies response:", companiesResponse)
-        console.log("[v0] Reports - Wallets response:", walletsResponse)
+        console.log("[v0] Reports - Carriers response:", carriersResponse)
+        console.log("[v0] Reports - Platforms response:", platformsResponse)
+        console.log("[v0] Reports - Orders response:", ordersResponse)
+        console.log("[v0] Reports - Transactions response:", transactionsResponse)
 
         // استخراج البيانات من الاستجابات
         const statsData = statsResponse.data || statsResponse.result || statsResponse || {}
         const usersData = usersResponse.data || usersResponse.result || usersResponse || []
-        const companiesData = companiesResponse.result || companiesResponse.data || companiesResponse || []
-        const walletsData = walletsResponse.result || walletsResponse.data || walletsResponse || []
+        const carriersData = (carriersResponse?.data?.byCarrier || carriersResponse?.byCarrier || []) as any[]
+        const carriersOverall = carriersResponse?.data?.overall || carriersResponse?.overall || null
+        const platformsData = platformsResponse?.data || platformsResponse || []
+        const ordersData = ordersResponse?.data || []
+        const ordersPagination = ordersResponse?.pagination || { totalItems: Array.isArray(ordersData) ? ordersData.length : 0 }
+        const transactionsData = transactionsResponse?.data || []
 
-        const usersMap = new Map()
-        if (Array.isArray(usersData)) {
-          usersData.forEach((user: any) => {
-            usersMap.set(user._id || user.id, user)
-          })
-        }
-
-        console.log("[v0] Reports - Users Map size:", usersMap.size)
-        console.log("[v0] Reports - Wallets count:", Array.isArray(walletsData) ? walletsData.length : 0)
-
+        // Top Users by balance from admin users (server-enriched with balance)
         let topUsersData: UserData[] = []
-        if (Array.isArray(walletsData)) {
-          topUsersData = walletsData
-            .map((wallet: any) => {
-              const user = usersMap.get(wallet.customerId)
-              if (!user) {
-                console.warn(`[v0] User not found for customerId: ${wallet.customerId}`)
-                return null
-              }
-
+        if (Array.isArray(usersData)) {
+          topUsersData = (usersData as any[])
+            .map((user: any) => {
               const userName = `${user.firstName || ""} ${user.lastName || ""}`.trim() || user.name || "غير معروف"
-
               return {
-                walletId: wallet._id || wallet.id,
+                walletId: user._id || user.id,
                 userName,
                 userEmail: user.email || "",
-                balance: wallet.balance || 0,
-                transactionCount: wallet.transactionCount || 0,
-                createdAt: wallet.createdAt || user.createdAt,
-                isVerified: wallet.isVerified || false,
+                balance: Number(user.balance || 0),
+                transactionCount: Number(user.walletRecharges || 0),
+                createdAt: user.createdAt,
+                isVerified: Boolean(user.active),
               }
             })
-            .filter((user): user is UserData => user !== null)
-            .sort((a, b) => b.balance - a.balance)
+            .sort((a, b) => Number((b as UserData).balance || 0) - Number((a as UserData).balance || 0))
             .slice(0, 10)
         }
 
@@ -153,17 +189,27 @@ export default function ReportsPage() {
         }
 
         // حساب الإحصائيات من البيانات المتوفرة
-        const totalRevenue = 0 // لا يمكن حساب الإيرادات بدون تفاصيل الطلبات
-        const totalOrders = ordersStats.total || 0
-        const totalUsers = Array.isArray(usersData) ? usersData.length : 0
-        const totalShipments = shipmentsStats.total || 0
+        // إجمالي الإيرادات من إحصائيات شركات الشحن أو من الطلبات
+        const carriersTotalRevenue = Number(carriersOverall?.financials?.totalRevenue || 0)
+        const totalRevenue = carriersTotalRevenue > 0
+          ? carriersTotalRevenue
+          : (Array.isArray(ordersData) ? ordersData.reduce((sum: number, o: any) => sum + Number(o.totalAmount || 0), 0) : 0)
+
+        // إجمالي الطلبات من باك الادمن
+        const totalOrders = Number(ordersPagination?.totalItems || 0)
+        // إجمالي المستخدمين من إحصائيات الباك
+        const totalUsers = Number(statsData?.users?.total || (Array.isArray(usersData) ? usersData.length : 0))
+        // إجمالي الشحنات من إجمالي شركات الشحن (وفق الفترة)
+        const totalShipments = Number(carriersOverall?.totals?.total || shipmentsStats.total || 0)
 
         // تجميع الشحنات حسب الحالة من البيانات الإحصائية
+        const overallTotals = (carriersOverall && carriersOverall.totals) || {}
         const shipmentsByStatus = [
-          { status: "قيد الانتظار", count: shipmentsStats.pending || 0, color: "#FFA500" },
-          { status: "قيد النقل", count: shipmentsStats.inTransit || 0, color: "#3B82F6" },
-          { status: "تم التسليم", count: shipmentsStats.delivered || 0, color: "#10B981" },
-          { status: "ملغي", count: shipmentsStats.cancelled || 0, color: "#EF4444" },
+          { status: "قيد الانتظار", count: Number(overallTotals.readyForPickup || 0), color: "#FFA500" },
+          { status: "قيد النقل", count: Number(overallTotals.inTransit || 0), color: "#3B82F6" },
+          { status: "تم التسليم", count: Number(overallTotals.delivered || 0), color: "#10B981" },
+          { status: "ملغي", count: Number(overallTotals.canceled || 0), color: "#EF4444" },
+          { status: "مرتجع", count: Number(overallTotals.returns || 0), color: "#8b5cf6" },
         ]
 
         const shipmentsStatusData = shipmentsByStatus
@@ -173,47 +219,156 @@ export default function ReportsPage() {
             percentage: totalShipments > 0 ? (item.count / totalShipments) * 100 : 0,
           }))
 
-        // تجميع بيانات الطلبات حسب الحالة
-        const ordersByStatus = [
-          { status: "قيد الانتظار", count: ordersStats.pending || 0 },
-          { status: "تمت الموافقة", count: ordersStats.approved || 0 },
-          { status: "مرفوض", count: ordersStats.rejected || 0 },
-          { status: "مكتمل", count: ordersStats.completed || 0 },
-        ].filter((item) => item.count > 0)
+        // بيانات الطلبات الشهرية من قائمة الطلبات
+        const ordersMonthly = Array.isArray(ordersData) ? generateOrdersData(ordersData) : []
 
-        // بيانات شركات الشحن - لا يمكن حسابها بدون تفاصيل الشحنات
-        const companiesStats = Array.isArray(companiesData)
-          ? companiesData.map((company: any) => ({
-              name: company.company || company.name || company.nameAr || "غير محدد",
-              totalShipments: 0,
-              profit: 0,
-              amountDue: 0,
+        // بيانات شركات الشحن من باك: /api/admin/carriers/stats
+        const companiesStats = Array.isArray(carriersData)
+          ? carriersData.map((c: any) => ({
+              name: c.company || "غير محدد",
+              totalShipments: c?.totals?.total || 0,
+              profit: Number(c?.financials?.ourProfit || 0),
+              amountDue: Number(c?.financials?.payableToCarrier || 0),
               color: getRandomColor(),
             }))
           : []
 
+        // بيانات المنصات من باك: /api/admin/platforms
+        const platformsStats = Array.isArray(platformsData)
+          ? platformsData.map((p: any) => ({
+              name: p.name || (p.platform ? String(p.platform).toUpperCase() : "منصة"),
+              totalOrders: Number(p.orders || 0),
+              revenue: Number(p.revenue || 0),
+              color: p.color || getRandomColor(),
+            }))
+          : []
+
         // حساب نمو البيانات
+        const getGrowth = (arr: any[], key: string) => {
+          if (!Array.isArray(arr) || arr.length < 2) return 0
+          const prev = Number(arr[arr.length - 2]?.[key] || 0)
+          const curr = Number(arr[arr.length - 1]?.[key] || 0)
+          if (prev <= 0) return 0
+          return ((curr - prev) / prev) * 100
+        }
+
+        // بناء سجل شحن المحفظة اليومي من المعاملات
+        const dailyMap = new Map<string, { amount: number; count: number; users: Set<string> }>()
+        if (Array.isArray(transactionsData)) {
+          (transactionsData as any[]).forEach((t: any) => {
+            const type = String(t.type || '').toUpperCase()
+            const isCredit = type === 'CREDIT' || type === 'DEPOSIT' || type === 'APPROVED' || type === 'PAYMENT_RECEIVED'
+            if (!isCredit) return
+            const d = t.createdAt ? new Date(t.createdAt) : null
+            if (!d || isNaN(d.getTime())) return
+            if ((startDate && d < startDate) || (endDate && d > endDate)) return
+            const key = d.toISOString().slice(0, 10)
+            if (!dailyMap.has(key)) dailyMap.set(key, { amount: 0, count: 0, users: new Set<string>() })
+            const rec = dailyMap.get(key)!
+            rec.amount += Number(t.amount || 0)
+            rec.count += 1
+            const uid = String(t.customerId || t.userId || '')
+            if (uid) rec.users.add(uid)
+          })
+        }
+        const dailyRecords = Array.from(dailyMap.entries())
+          .sort((a, b) => a[0].localeCompare(b[0]))
+          .map(([key, v]) => ({
+            date: new Date(key).toLocaleDateString('ar-SA'),
+            users: v.users.size || v.count,
+            amount: Math.round(v.amount),
+            avgAmount: v.count ? Math.round(v.amount / v.count) : 0,
+            count: v.count,
+          }))
+
+        const walletChargesCount = dailyRecords.reduce((sum: number, r: any) => sum + Number(r.count || 0), 0)
+
+        // إحصائيات حالات الطلبات من القائمة
+        const ordersStatus = Array.isArray(ordersData)
+          ? (ordersData as any[]).reduce(
+              (acc, o: any) => {
+                const s = String(o.status || '').toLowerCase()
+                if (s === 'completed') acc.completed += 1
+                else if (s === 'processing') acc.processing += 1
+                else if (s === 'cancelled') acc.cancelled += 1
+                else acc.pending += 1
+                acc.total += 1
+                return acc
+              },
+              { total: 0, completed: 0, processing: 0, cancelled: 0, pending: 0 },
+            )
+          : { total: 0, completed: 0, processing: 0, cancelled: 0, pending: 0 }
+
+        // تقسيم المستخدمين حسب رصيد المحفظة
+        const segBase = {
+          vip: { count: 0, sum: 0 },
+          active: { count: 0, sum: 0 },
+          medium: { count: 0, sum: 0 },
+          inactive: { count: 0, sum: 0 },
+        }
+        if (Array.isArray(usersData)) {
+          (usersData as any[]).forEach((u: any) => {
+            const bal = Number(u.balance || 0)
+            if (bal > 2000) { segBase.vip.count++; segBase.vip.sum += bal }
+            else if (bal >= 1000) { segBase.active.count++; segBase.active.sum += bal }
+            else if (bal >= 500) { segBase.medium.count++; segBase.medium.sum += bal }
+            else if (bal <= 0) { segBase.inactive.count++; /* sum stays 0 */ }
+          })
+        }
+        const safeDiv = (a: number, b: number) => (b > 0 ? Math.round(a / b) : 0)
+        const walletSegments = {
+          vip: {
+            count: segBase.vip.count,
+            avgBalance: safeDiv(segBase.vip.sum, segBase.vip.count),
+            percent: totalUsers ? (segBase.vip.count / totalUsers) * 100 : 0,
+          },
+          active: {
+            count: segBase.active.count,
+            avgBalance: safeDiv(segBase.active.sum, segBase.active.count),
+            percent: totalUsers ? (segBase.active.count / totalUsers) * 100 : 0,
+          },
+          medium: {
+            count: segBase.medium.count,
+            avgBalance: safeDiv(segBase.medium.sum, segBase.medium.count),
+            percent: totalUsers ? (segBase.medium.count / totalUsers) * 100 : 0,
+          },
+          inactive: {
+            count: segBase.inactive.count,
+            avgBalance: 0,
+            percent: totalUsers ? (segBase.inactive.count / totalUsers) * 100 : 0,
+          },
+        }
         const calculatedData = {
           overview: {
             totalRevenue,
-            revenueGrowth: 0,
+            revenueGrowth: getGrowth(ordersMonthly, 'revenue'),
             totalOrders,
-            ordersGrowth: 0,
+            ordersGrowth: getGrowth(ordersMonthly, 'count'),
             totalUsers,
-            usersGrowth: 0,
+            usersGrowth: getGrowth(generateMonthlyData(usersData, 'createdAt'), 'count'),
             totalShipments,
             shipmentsGrowth: 0,
+            activeUsers: Number(statsData?.users?.active || 0),
+            activeWallets: Number(statsData?.wallets?.activeWallets || 0),
+            totalTransactions: Number(statsData?.wallets?.totalTransactions || 0),
+            totalDeposits: Number(statsData?.wallets?.totalDeposits || 0),
+            totalBalance: Number(statsData?.wallets?.totalBalance || 0),
+            newCustomersThisMonth: Number(statsData?.customers?.newThisMonth || 0),
+            walletChargesCount,
           },
           users: generateMonthlyData(usersData, "createdAt"),
-          orders: ordersByStatus,
+          orders: ordersMonthly,
           shipments: shipmentsStatusData,
           shippingCompanies: companiesStats,
-          platforms: [], // This will be populated if platform data is fetched elsewhere
+          platforms: platformsStats,
+          ordersStatus,
+          walletSegments,
         }
 
         console.log("[v0] Reports - Calculated data:", calculatedData)
         setData(calculatedData)
         setTopUsers(topUsersData) // Set top users data
+        setWalletDaily(dailyRecords)
       } catch (error) {
         console.error("[v0] Reports - خطأ عام في جلب البيانات:", error)
         // في حالة الخطأ، استخدم بيانات افتراضية
@@ -241,7 +396,7 @@ export default function ReportsPage() {
     }
 
     fetchData()
-  }, [selectedPeriod])
+  }, [selectedPeriod, customDateFrom, customDateTo])
 
   const generateMonthlyData = (items: any[], dateField: string) => {
     if (!Array.isArray(items) || items.length === 0) return []
@@ -319,7 +474,7 @@ export default function ReportsPage() {
         const date = new Date(order.createdAt)
         const month = date.getMonth()
         monthlyData[month].count++
-        monthlyData[month].revenue += order.totalPrice || 0
+        monthlyData[month].revenue += Number(order.totalPrice || order.totalAmount || 0)
       }
     })
 
@@ -371,15 +526,28 @@ export default function ReportsPage() {
     )
   }, [data]) // Depend on 'data' state
 
-  const printData = {
-    headers: ["الفترة", "القيمة", "النمو", "الحالة"],
-    rows: reportData.orders.map((order: any) => [
-      order.month,
-      `${order.revenue.toLocaleString()} ريال`,
-      `${order.count.toLocaleString()} طلب`,
-      "مكتمل",
-    ]),
-  }
+  const printColumns = [
+    { key: "metric", label: "المؤشر" },
+    { key: "value", label: "القيمة" },
+    { key: "growth", label: "النمو" },
+  ]
+  const printRows = [
+    {
+      metric: "إجمالي الإيرادات",
+      value: `${reportData.overview.totalRevenue.toLocaleString()} ريال`,
+      growth: `${Math.abs(reportData.overview.revenueGrowth)}%`,
+    },
+    {
+      metric: "إجمالي الطلبات",
+      value: reportData.overview.totalOrders.toLocaleString(),
+      growth: `${Math.abs(reportData.overview.ordersGrowth)}%`,
+    },
+    {
+      metric: "إجمالي الشحنات",
+      value: reportData.overview.totalShipments.toLocaleString(),
+      growth: `${Math.abs(reportData.overview.shipmentsGrowth)}%`,
+    },
+  ]
 
   if (loading) {
     return (
@@ -438,12 +606,10 @@ export default function ReportsPage() {
             <div className="flex items-center gap-3">
               <EnhancedPrintButton11
                 title="تقرير شامل"
-                data={printData}
-                stats={[
-                  { label: "إجمالي الإيرادات", value: `${reportData.overview.totalRevenue.toLocaleString()} ريال` },
-                  { label: "إجمالي الطلبات", value: reportData.overview.totalOrders.toLocaleString() },
-                  { label: "معدل النمو", value: `+${reportData.overview.revenueGrowth}%` },
-                ]}
+                subtitle={`نظرة عامة على المؤشرات الرئيسية`}
+                data={printRows}
+                columns={printColumns}
+                showStats={true}
               />
             </div>
           </div>
@@ -860,7 +1026,7 @@ export default function ReportsPage() {
                 </div>
                 <div className="flex items-center gap-2 text-green-600">
                   <ArrowUpRight className="w-4 h-4" />
-                  <span className="text-sm font-medium">+{reportData.overview.usersGrowth}% من الفترة السابقة</span>
+                  <span className="text-sm font-medium">+{Math.round(Math.abs(reportData.overview.usersGrowth))}% من الفترة السابقة</span>
                 </div>
               </div>
 
@@ -872,12 +1038,16 @@ export default function ReportsPage() {
                   <div>
                     <h3 className="text-gray-600 text-sm">مستخدمون نشطون</h3>
                     <p className="text-2xl font-bold text-gray-900">
-                      {Math.round(reportData.overview.totalUsers * 0.75).toLocaleString()}
+                      {Number(reportData.overview.activeUsers || 0).toLocaleString()}
                     </p>
                   </div>
                 </div>
                 <div className="flex items-center gap-2 text-blue-600">
-                  <span className="text-sm font-medium">75% من إجمالي المستخدمين</span>
+                  <span className="text-sm font-medium">
+                    {reportData.overview.totalUsers > 0
+                      ? `${Math.round((Number(reportData.overview.activeUsers || 0) / reportData.overview.totalUsers) * 100)}% من إجمالي المستخدمين`
+                      : "0% من إجمالي المستخدمين"}
+                  </span>
                 </div>
               </div>
 
@@ -889,12 +1059,16 @@ export default function ReportsPage() {
                   <div>
                     <h3 className="text-gray-600 text-sm">مستخدمون جدد</h3>
                     <p className="text-2xl font-bold text-gray-900">
-                      {Math.round(reportData.overview.totalUsers * 0.15).toLocaleString()}
+                      {Number(reportData.overview.newCustomersThisMonth || 0).toLocaleString()}
                     </p>
                   </div>
                 </div>
                 <div className="flex items-center gap-2 text-purple-600">
-                  <span className="text-sm font-medium">15% من إجمالي المستخدمين</span>
+                  <span className="text-sm font-medium">
+                    {reportData.overview.totalUsers > 0
+                      ? `${Math.round((Number(reportData.overview.newCustomersThisMonth || 0) / reportData.overview.totalUsers) * 100)}% من إجمالي المستخدمين`
+                      : "0% من إجمالي المستخدمين"}
+                  </span>
                 </div>
               </div>
 
@@ -906,13 +1080,17 @@ export default function ReportsPage() {
                   <div>
                     <h3 className="text-gray-600 text-sm">شحنوا المحفظة</h3>
                     <p className="text-2xl font-bold text-gray-900">
-                      {Math.round(reportData.overview.totalUsers * 0.6).toLocaleString()}
+                      {Number(reportData.overview.activeWallets || 0).toLocaleString()}
                     </p>
                   </div>
                 </div>
                 <div className="flex items-center gap-2 text-green-600">
                   <ArrowUpRight className="w-4 h-4" />
-                  <span className="text-sm font-medium">60% من إجمالي المستخدمين</span>
+                  <span className="text-sm font-medium">
+                    {reportData.overview.totalUsers > 0
+                      ? `${Math.round((Number(reportData.overview.activeWallets || 0) / reportData.overview.totalUsers) * 100)}% من إجمالي المستخدمين`
+                      : "0% من إجمالي المستخدمين"}
+                  </span>
                 </div>
               </div>
 
@@ -924,13 +1102,17 @@ export default function ReportsPage() {
                   <div>
                     <h3 className="text-gray-600 text-sm">لم يشحنوا المحفظة</h3>
                     <p className="text-2xl font-bold text-gray-900">
-                      {Math.round(reportData.overview.totalUsers * 0.4).toLocaleString()}
+                      {(Math.max(0, Number(reportData.overview.totalUsers || 0) - Number(reportData.overview.activeWallets || 0))).toLocaleString()}
                     </p>
                   </div>
                 </div>
                 <div className="flex items-center gap-2 text-amber-600">
                   <ArrowDownRight className="w-4 h-4" />
-                  <span className="text-sm font-medium">40% من إجمالي المستخدمين</span>
+                  <span className="text-sm font-medium">
+                    {reportData.overview.totalUsers > 0
+                      ? `${Math.round(((Math.max(0, Number(reportData.overview.totalUsers || 0) - Number(reportData.overview.activeWallets || 0))) / reportData.overview.totalUsers) * 100)}% من إجمالي المستخدمين`
+                      : "0% من إجمالي المستخدمين"}
+                  </span>
                 </div>
               </div>
             </div>
@@ -1007,19 +1189,31 @@ export default function ReportsPage() {
                         </div>
                       </td>
                       <td className="px-6 py-4 text-green-600 font-bold">
-                        {Math.round(reportData.overview.totalUsers * 0.6).toLocaleString()}
+                        {Number(reportData.overview.activeWallets || 0).toLocaleString()}
                       </td>
                       <td className="px-6 py-4 text-blue-600 font-bold">
-                        {Math.round(reportData.overview.totalUsers * 0.6 * 850).toLocaleString()} ريال
+                        {Number(reportData.overview.totalBalance || 0).toLocaleString()} ريال
                       </td>
-                      <td className="px-6 py-4 text-gray-700 font-medium">850 ريال</td>
+                      <td className="px-6 py-4 text-gray-700 font-medium">
+                        {Number(reportData.overview.activeWallets || 0) > 0
+                          ? `${Math.round(Number(reportData.overview.totalBalance || 0) / Number(reportData.overview.activeWallets || 1)).toLocaleString()} ريال`
+                          : `0 ريال`}
+                      </td>
                       <td className="px-6 py-4 text-purple-600 font-bold">
-                        {Math.round(reportData.overview.totalUsers * 0.6 * 3.2).toLocaleString()} عملية
+                        {Number(reportData.overview.walletChargesCount || 0).toLocaleString()} عملية
                       </td>
-                      <td className="px-6 py-4 text-gray-700 font-medium">3.2 عملية</td>
+                      <td className="px-6 py-4 text-gray-700 font-medium">
+                        {(() => {
+                          const active = Number(reportData.overview.activeWallets || 0)
+                          const cnt = Number(reportData.overview.walletChargesCount || 0)
+                          return active > 0 ? `${Math.round((cnt / active) * 10) / 10} عملية` : `0 عملية`
+                        })()}
+                      </td>
                       <td className="px-6 py-4 text-center">
                         <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-bold bg-green-100 text-green-700">
-                          60%
+                          {reportData.overview.totalUsers > 0
+                            ? `${Math.round((Number(reportData.overview.activeWallets || 0) / reportData.overview.totalUsers) * 100)}%`
+                            : `0%`}
                         </span>
                       </td>
                     </tr>
@@ -1033,7 +1227,7 @@ export default function ReportsPage() {
                         </div>
                       </td>
                       <td className="px-6 py-4 text-amber-600 font-bold">
-                        {Math.round(reportData.overview.totalUsers * 0.4).toLocaleString()}
+                        {Math.max(0, Number(reportData.overview.totalUsers || 0) - Number(reportData.overview.activeWallets || 0)).toLocaleString()}
                       </td>
                       <td className="px-6 py-4 text-gray-500 font-medium">0 ريال</td>
                       <td className="px-6 py-4 text-gray-500 font-medium">0ريال</td>
@@ -1041,7 +1235,9 @@ export default function ReportsPage() {
                       <td className="px-6 py-4 text-gray-500 font-medium">0 عملية</td>
                       <td className="px-6 py-4 text-center">
                         <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-bold bg-amber-100 text-amber-700">
-                          40%
+                          {reportData.overview.totalUsers > 0
+                            ? `${Math.round(((Math.max(0, Number(reportData.overview.totalUsers || 0) - Number(reportData.overview.activeWallets || 0))) / reportData.overview.totalUsers) * 100)}%`
+                            : `0%`}
                         </span>
                       </td>
                     </tr>
@@ -1049,15 +1245,23 @@ export default function ReportsPage() {
                       <td className="px-6 py-4 text-gray-900">الإجمالي</td>
                       <td className="px-6 py-4 text-gray-900">{reportData.overview.totalUsers.toLocaleString()}</td>
                       <td className="px-6 py-4 text-blue-700">
-                        {Math.round(reportData.overview.totalUsers * 0.6 * 850).toLocaleString()} ريال
+                        {Number(reportData.overview.totalBalance || 0).toLocaleString()} ريال
                       </td>
                       <td className="px-6 py-4 text-gray-900">
-                        {Math.round((reportData.overview.totalUsers * 0.6 * 850) / reportData.overview.totalUsers)} ريال
+                        {reportData.overview.totalUsers > 0
+                          ? `${Math.round(Number(reportData.overview.totalBalance || 0) / reportData.overview.totalUsers).toLocaleString()} ريال`
+                          : `0 ريال`}
                       </td>
                       <td className="px-6 py-4 text-purple-700">
-                        {Math.round(reportData.overview.totalUsers * 0.6 * 3.2).toLocaleString()} عملية
+                        {Number(reportData.overview.walletChargesCount || 0).toLocaleString()} عملية
                       </td>
-                      <td className="px-6 py-4 text-gray-900">1.9 عملية</td>
+                      <td className="px-6 py-4 text-gray-900">
+                        {(() => {
+                          const active = Number(reportData.overview.activeWallets || 0)
+                          const cnt = Number(reportData.overview.walletChargesCount || 0)
+                          return active > 0 ? `${Math.round((cnt / active) * 10) / 10} عملية` : `0 عملية`
+                        })()}
+                      </td>
                       <td className="px-6 py-4 text-center">100%</td>
                     </tr>
                   </tbody>
@@ -1089,19 +1293,19 @@ export default function ReportsPage() {
                     <div className="flex justify-between">
                       <span className="text-sm text-gray-600">عدد المستخدمين</span>
                       <span className="text-sm font-bold text-green-600">
-                        {Math.round(reportData.overview.totalUsers * 0.15).toLocaleString()}
+                        {Number(reportData.walletSegments?.vip?.count || 0).toLocaleString()}
                       </span>
                     </div>
                     <div className="flex justify-between">
                       <span className="text-sm text-gray-600">متوسط الرصيد</span>
-                      <span className="text-sm font-bold text-gray-900">3,250 ريال</span>
+                      <span className="text-sm font-bold text-gray-900">{Number(reportData.walletSegments?.vip?.avgBalance || 0).toLocaleString()} ريال</span>
                     </div>
                     <div className="flex justify-between">
                       <span className="text-sm text-gray-600">النسبة</span>
-                      <span className="text-sm font-bold text-green-600">15%</span>
+                      <span className="text-sm font-bold text-green-600">{Math.round(reportData.walletSegments?.vip?.percent || 0)}%</span>
                     </div>
                     <div className="w-full bg-gray-200 rounded-full h-2 mt-3">
-                      <div className="bg-green-500 h-2 rounded-full" style={{ width: "15%" }} />
+                      <div className="bg-green-500 h-2 rounded-full" style={{ width: `${Math.round(reportData.walletSegments?.vip?.percent || 0)}%` }} />
                     </div>
                   </div>
                 </div>
@@ -1120,19 +1324,19 @@ export default function ReportsPage() {
                     <div className="flex justify-between">
                       <span className="text-sm text-gray-600">عدد المستخدمين</span>
                       <span className="text-sm font-bold text-blue-600">
-                        {Math.round(reportData.overview.totalUsers * 0.25).toLocaleString()}
+                        {Number(reportData.walletSegments?.active?.count || 0).toLocaleString()}
                       </span>
                     </div>
                     <div className="flex justify-between">
                       <span className="text-sm text-gray-600">متوسط الرصيد</span>
-                      <span className="text-sm font-bold text-gray-900">1,450 ريال</span>
+                      <span className="text-sm font-bold text-gray-900">{Number(reportData.walletSegments?.active?.avgBalance || 0).toLocaleString()} ريال</span>
                     </div>
                     <div className="flex justify-between">
                       <span className="text-sm text-gray-600">النسبة</span>
-                      <span className="text-sm font-bold text-blue-600">25%</span>
+                      <span className="text-sm font-bold text-blue-600">{Math.round(reportData.walletSegments?.active?.percent || 0)}%</span>
                     </div>
                     <div className="w-full bg-gray-200 rounded-full h-2 mt-3">
-                      <div className="bg-blue-500 h-2 rounded-full" style={{ width: "25%" }} />
+                      <div className="bg-blue-500 h-2 rounded-full" style={{ width: `${Math.round(reportData.walletSegments?.active?.percent || 0)}%` }} />
                     </div>
                   </div>
                 </div>
@@ -1151,19 +1355,19 @@ export default function ReportsPage() {
                     <div className="flex justify-between">
                       <span className="text-sm text-gray-600">عدد المستخدمين</span>
                       <span className="text-sm font-bold text-purple-600">
-                        {Math.round(reportData.overview.totalUsers * 0.2).toLocaleString()}
+                        {Number(reportData.walletSegments?.medium?.count || 0).toLocaleString()}
                       </span>
                     </div>
                     <div className="flex justify-between">
                       <span className="text-sm text-gray-600">متوسط الرصيد</span>
-                      <span className="text-sm font-bold text-gray-900">720 ريال</span>
+                      <span className="text-sm font-bold text-gray-900">{Number(reportData.walletSegments?.medium?.avgBalance || 0).toLocaleString()} ريال</span>
                     </div>
                     <div className="flex justify-between">
                       <span className="text-sm text-gray-600">النسبة</span>
-                      <span className="text-sm font-bold text-purple-600">20%</span>
+                      <span className="text-sm font-bold text-purple-600">{Math.round(reportData.walletSegments?.medium?.percent || 0)}%</span>
                     </div>
                     <div className="w-full bg-gray-200 rounded-full h-2 mt-3">
-                      <div className="bg-purple-500 h-2 rounded-full" style={{ width: "20%" }} />
+                      <div className="bg-purple-500 h-2 rounded-full" style={{ width: `${Math.round(reportData.walletSegments?.medium?.percent || 0)}%` }} />
                     </div>
                   </div>
                 </div>
@@ -1182,7 +1386,7 @@ export default function ReportsPage() {
                     <div className="flex justify-between">
                       <span className="text-sm text-gray-600">عدد المستخدمين</span>
                       <span className="text-sm font-bold text-gray-600">
-                        {Math.round(reportData.overview.totalUsers * 0.4).toLocaleString()}
+                        {Number(reportData.walletSegments?.inactive?.count || 0).toLocaleString()}
                       </span>
                     </div>
                     <div className="flex justify-between">
@@ -1191,10 +1395,10 @@ export default function ReportsPage() {
                     </div>
                     <div className="flex justify-between">
                       <span className="text-sm text-gray-600">النسبة</span>
-                      <span className="text-sm font-bold text-gray-600">40%</span>
+                      <span className="text-sm font-bold text-gray-600">{Math.round(reportData.walletSegments?.inactive?.percent || 0)}%</span>
                     </div>
                     <div className="w-full bg-gray-200 rounded-full h-2 mt-3">
-                      <div className="bg-gray-400 h-2 rounded-full" style={{ width: "40%" }} />
+                      <div className="bg-gray-400 h-2 rounded-full" style={{ width: `${Math.round(reportData.walletSegments?.inactive?.percent || 0)}%` }} />
                     </div>
                   </div>
                 </div>
@@ -1294,15 +1498,7 @@ export default function ReportsPage() {
               </div>
 
               <div className="space-y-4">
-                {[
-                  { date: "اليوم", users: 45, amount: 38500, avgAmount: 856 },
-                  { date: "أمس", users: 52, amount: 42300, avgAmount: 813 },
-                  { date: "منذ يومين", users: 48, amount: 39800, avgAmount: 829 },
-                  { date: "منذ 3 أيام", users: 41, amount: 35200, avgAmount: 859 },
-                  { date: "منذ 4 أيام", users: 38, amount: 31500, avgAmount: 829 },
-                  { date: "منذ 5 أيام", users: 44, amount: 37600, avgAmount: 855 },
-                  { date: "منذ 6 أيام", users: 50, amount: 41200, avgAmount: 824 },
-                ].map((day, index) => (
+                {(walletDaily && walletDaily.length ? walletDaily : []).slice(-7).map((day, index) => (
                   <div key={index} className="border rounded-xl p-5 hover:shadow-md transition-all">
                     <div className="flex items-center justify-between mb-3">
                       <div className="flex items-center gap-3">
@@ -1311,7 +1507,7 @@ export default function ReportsPage() {
                         </div>
                         <div>
                           <h4 className="font-bold text-gray-900">{day.date}</h4>
-                          <p className="text-xs text-gray-500">{day.users} مستخدم قاموا بالشحن</p>
+                          <p className="text-xs text-gray-500">{Number(day.users || 0)} مستخدم قاموا بالشحن</p>
                         </div>
                       </div>
                       <div className="text-left">
@@ -1323,7 +1519,7 @@ export default function ReportsPage() {
                     <div className="grid grid-cols-3 gap-3 pt-3 border-t border-gray-100">
                       <div className="text-center">
                         <p className="text-xs text-gray-500 mb-1">عدد العمليات</p>
-                        <p className="text-sm font-bold text-purple-600">{day.users} عملية</p>
+                        <p className="text-sm font-bold text-purple-600">{Number(day.count ?? day.users ?? 0)} عملية</p>
                       </div>
                       <div className="text-center">
                         <p className="text-xs text-gray-500 mb-1">متوسط المبلغ</p>
@@ -1333,14 +1529,14 @@ export default function ReportsPage() {
                         <p className="text-xs text-gray-500 mb-1">الحالة</p>
                         <span
                           className={`inline-block px-2 py-1 rounded-full text-xs font-bold ${
-                            day.users > 45
+                            (Number(day.count ?? day.users ?? 0)) > 45
                               ? "bg-green-100 text-green-700"
-                              : day.users > 40
+                              : (Number(day.count ?? day.users ?? 0)) > 40
                                 ? "bg-blue-100 text-blue-700"
                                 : "bg-amber-100 text-amber-700"
                           }`}
                         >
-                          {day.users > 45 ? "ممتاز" : day.users > 40 ? "جيد" : "متوسط"}
+                          {(Number(day.count ?? day.users ?? 0)) > 45 ? "ممتاز" : (Number(day.count ?? day.users ?? 0)) > 40 ? "جيد" : "متوسط"}
                         </span>
                       </div>
                     </div>
@@ -1349,7 +1545,7 @@ export default function ReportsPage() {
                       <div className="w-full bg-gray-200 rounded-full h-2">
                         <div
                           className="bg-gradient-to-r from-indigo-500 to-blue-600 h-2 rounded-full transition-all"
-                          style={{ width: `${(day.users / 52) * 100}%` }}
+                          style={{ width: `${Math.min(100, (((Number(day.count ?? day.users ?? 0)) / 50) * 100))}%` }}
                         />
                       </div>
                     </div>
@@ -1370,17 +1566,25 @@ export default function ReportsPage() {
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
                 <div className="bg-white/10 backdrop-blur-sm rounded-xl p-5 border border-white/20">
                   <p className="text-indigo-100 text-sm mb-2">معدل التفاعل</p>
-                  <p className="text-3xl font-bold">60%</p>
+                  <p className="text-3xl font-bold">
+                    {reportData.overview.totalUsers > 0
+                      ? `${Math.round((Number(reportData.overview.activeUsers || 0) / reportData.overview.totalUsers) * 100)}%`
+                      : "0%"}
+                  </p>
                   <div className="flex items-center gap-1 mt-2 text-green-300">
                     <ArrowUpRight className="w-4 h-4" />
-                    <span className="text-sm">+5% من الشهر السابق</span>
+                    <span className="text-sm">
+                      +{Math.round(Math.abs(Number(reportData.overview.usersGrowth || 0)))}% من الشهر السابق
+                    </span>
                   </div>
                 </div>
 
                 <div className="bg-white/10 backdrop-blur-sm rounded-xl p-5 border border-white/20">
                   <p className="text-indigo-100 text-sm mb-2">متوسط رصيد المحفظة</p>
                   <p className="text-3xl font-bold">
-                    {Math.round((reportData.overview.totalUsers * 0.6 * 850) / reportData.overview.totalUsers)} ريال
+                    {reportData.overview.totalUsers > 0
+                      ? Math.round(Number(reportData.overview.totalBalance || 0) / reportData.overview.totalUsers).toLocaleString()
+                      : 0} ريال
                   </p>
                   <div className="text-sm text-blue-200 mt-2">لكل مستخدم</div>
                 </div>
@@ -1388,14 +1592,20 @@ export default function ReportsPage() {
                 <div className="bg-white/10 backdrop-blur-sm rounded-xl p-5 border border-white/20">
                   <p className="text-indigo-100 text-sm mb-2">إجمالي عمليات الشحن</p>
                   <p className="text-3xl font-bold">
-                    {Math.round(reportData.overview.totalUsers * 0.6 * 3.2).toLocaleString()}
+                    {Number(reportData.overview.walletChargesCount || 0).toLocaleString()}
                   </p>
                   <div className="text-sm text-purple-200 mt-2">خلال الفترة الحالية</div>
                 </div>
 
                 <div className="bg-white/10 backdrop-blur-sm rounded-xl p-5 border border-white/20">
                   <p className="text-indigo-100 text-sm mb-2">متوسط الشحن</p>
-                  <p className="text-3xl font-bold">3.2 عملية</p>
+                  <p className="text-3xl font-bold">
+                    {(() => {
+                      const a = Number(reportData.overview.activeWallets || 0)
+                      const c = Number(reportData.overview.walletChargesCount || 0)
+                      return a > 0 ? Math.round((c / a) * 10) / 10 : 0
+                    })()} عملية
+                  </p>
                   <div className="flex items-center gap-1 mt-2 text-green-300">
                     <ArrowUpRight className="w-4 h-4" />
                     <span className="text-sm">لكل مستخدم نشط</span>
@@ -1409,21 +1619,21 @@ export default function ReportsPage() {
                     <div className="w-2 h-2 bg-green-400 rounded-full"></div>
                     <span className="text-indigo-100">مستخدمون VIP: </span>
                     <span className="font-bold">
-                      {Math.round(reportData.overview.totalUsers * 0.15).toLocaleString()} (15%)
+                      {Number(reportData.walletSegments?.vip?.count || 0).toLocaleString()} ({Math.round(reportData.walletSegments?.vip?.percent || 0)}%)
                     </span>
                   </div>
                   <div className="flex items-center gap-2">
                     <div className="w-2 h-2 bg-blue-400 rounded-full"></div>
                     <span className="text-indigo-100">مستخدمون نشطون: </span>
                     <span className="font-bold">
-                      {Math.round(reportData.overview.totalUsers * 0.25).toLocaleString()} (25%)
+                      {Number(reportData.walletSegments?.active?.count || 0).toLocaleString()} ({Math.round(reportData.walletSegments?.active?.percent || 0)}%)
                     </span>
                   </div>
                   <div className="flex items-center gap-2">
                     <div className="w-2 h-2 bg-purple-400 rounded-full"></div>
                     <span className="text-indigo-100">إجمالي الأرصدة: </span>
                     <span className="font-bold">
-                      {Math.round(reportData.overview.totalUsers * 0.6 * 850).toLocaleString()} ريال
+                      {Number(reportData.overview.totalBalance || 0).toLocaleString()} ريال
                     </span>
                   </div>
                 </div>
@@ -1463,12 +1673,16 @@ export default function ReportsPage() {
                   <div>
                     <h3 className="text-gray-600 text-sm">طلبات مكتملة</h3>
                     <p className="text-2xl font-bold text-gray-900">
-                      {Math.round(reportData.overview.totalOrders * 0.85).toLocaleString()}
+                      {Number(reportData.ordersStatus?.completed || 0).toLocaleString()}
                     </p>
                   </div>
                 </div>
                 <div className="flex items-center gap-2 text-green-600">
-                  <span className="text-sm font-medium">85% من إجمالي الطلبات</span>
+                  <span className="text-sm font-medium">
+                    {Number(reportData.ordersStatus?.total || 0) > 0
+                      ? `${Math.round((Number(reportData.ordersStatus?.completed || 0) / Number(reportData.ordersStatus?.total || 1)) * 100)}% من إجمالي الطلبات`
+                      : "0% من إجمالي الطلبات"}
+                  </span>
                 </div>
               </div>
 
@@ -1480,12 +1694,16 @@ export default function ReportsPage() {
                   <div>
                     <h3 className="text-gray-600 text-sm">طلبات قيد المعالجة</h3>
                     <p className="text-2xl font-bold text-gray-900">
-                      {Math.round(reportData.overview.totalOrders * 0.15).toLocaleString()}
+                      {Number(reportData.ordersStatus?.processing || 0).toLocaleString()}
                     </p>
                   </div>
                 </div>
                 <div className="flex items-center gap-2 text-amber-600">
-                  <span className="text-sm font-medium">15% من إجمالي الطلبات</span>
+                  <span className="text-sm font-medium">
+                    {Number(reportData.ordersStatus?.total || 0) > 0
+                      ? `${Math.round((Number(reportData.ordersStatus?.processing || 0) / Number(reportData.ordersStatus?.total || 1)) * 100)}% من إجمالي الطلبات`
+                      : "0% من إجمالي الطلبات"}
+                  </span>
                 </div>
               </div>
             </div>
@@ -1700,7 +1918,9 @@ export default function ReportsPage() {
                   <div>
                     <h3 className="text-gray-600 text-sm">متوسط قيمة الطلب</h3>
                     <p className="text-2xl font-bold text-gray-900">
-                      {Math.round(reportData.overview.totalRevenue / reportData.overview.totalOrders).toLocaleString()}{" "}
+                      {reportData.overview.totalOrders > 0
+                        ? Math.round(reportData.overview.totalRevenue / reportData.overview.totalOrders).toLocaleString()
+                        : 0}{" "}
                       ريال
                     </p>
                   </div>

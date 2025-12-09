@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react"
 
 // Base API URL - يمكن تغييره حسب البيئة
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "https://api.example.com"
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || ""
 
 // Types
 interface UserWalletResponse {
@@ -59,71 +59,80 @@ export function useGetUserWalletQuery({ userId }: { userId: string }) {
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<Error | null>(null)
 
-  useEffect(() => {
-    const fetchWallet = async () => {
-      try {
-        setIsLoading(true)
-        const response = await fetch(`${API_BASE_URL}/admin/users/${userId}/wallet`, {
-          headers: {
-            "Content-Type": "application/json",
-            // يمكن إضافة token هنا إذا لزم الأمر
-            // 'Authorization': `Bearer ${token}`
-          },
-        })
+  const fetchWallet = async () => {
+    try {
+      setIsLoading(true)
+      const response = await fetch(`${API_BASE_URL}/api/admin/users/${userId}/wallet`, {
+        headers: {
+          "Content-Type": "application/json",
+          // يمكن إضافة token هنا إذا لزم الأمر
+          // 'Authorization': `Bearer ${token}`
+        },
+        credentials: "include",
+      })
 
-        if (!response.ok) {
-          throw new Error("Failed to fetch wallet data")
-        }
-
-        const result = await response.json()
-        setData(result)
-      } catch (err) {
-        setError(err as Error)
-        // في حالة الخطأ، نعيد بيانات تجريبية
-        setData({
-          data: {
-            user: {
-              _id: userId,
-              firstName: "مستخدم",
-              lastName: "تجريبي",
-              email: "user@example.com",
-              phone: "0501234567",
-              active: true,
-              createdAt: new Date().toISOString(),
-            },
-            wallet: {
-              balance: 5000,
-              currency: "SAR",
-            },
-            transactions: [
-              {
-                _id: "1",
-                amount: 1000,
-                type: "deposit",
-                date: new Date().toISOString(),
-                description: "إيداع",
-              },
-              {
-                _id: "2",
-                amount: 500,
-                type: "withdrawal",
-                date: new Date().toISOString(),
-                description: "سحب",
-              },
-            ],
-          },
-        })
-      } finally {
-        setIsLoading(false)
+      if (!response.ok) {
+        throw new Error("Failed to fetch wallet data")
       }
-    }
 
+      const raw = await response.json()
+      const payload: any = (raw as any)?.data?.data || (raw as any)?.data || (raw as any)
+      const normalized: UserWalletResponse = {
+        data: {
+          user: payload?.user,
+          wallet: payload?.wallet,
+          transactions: Array.isArray(payload?.transactions) ? payload.transactions : [],
+        },
+      }
+      setData(normalized)
+    } catch (err) {
+      setError(err as Error)
+      // في حالة الخطأ، نعيد بيانات تجريبية
+      setData({
+        data: {
+          user: {
+            _id: userId,
+            firstName: "مستخدم",
+            lastName: "تجريبي",
+            email: "user@example.com",
+            phone: "0501234567",
+            active: true,
+            createdAt: new Date().toISOString(),
+          },
+          wallet: {
+            balance: 5000,
+            currency: "SAR",
+          },
+          transactions: [
+            {
+              _id: "1",
+              amount: 1000,
+              type: "deposit",
+              date: new Date().toISOString(),
+              description: "إيداع",
+            },
+            {
+              _id: "2",
+              amount: 500,
+              type: "withdrawal",
+              date: new Date().toISOString(),
+              description: "سحب",
+            },
+          ],
+        },
+      })
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  useEffect(() => {
     if (userId) {
       fetchWallet()
     }
   }, [userId])
 
-  return { data, isLoading, error }
+  return { data, isLoading, error, refetch: fetchWallet }
 }
 
 // Custom hook for fetching user activity data
@@ -136,12 +145,13 @@ export function useGetUserActivityQuery({ userId }: { userId: string }) {
     const fetchActivity = async () => {
       try {
         setIsLoading(true)
-        const response = await fetch(`${API_BASE_URL}/admin/users/${userId}/activity`, {
+        const response = await fetch(`${API_BASE_URL}/api/admin/users/${userId}/activity`, {
           headers: {
             "Content-Type": "application/json",
             // يمكن إضافة token هنا إذا لزم الأمر
             // 'Authorization': `Bearer ${token}`
           },
+          credentials: "include",
         })
 
         if (!response.ok) {
@@ -204,4 +214,32 @@ export function useGetUserActivityQuery({ userId }: { userId: string }) {
   }, [userId])
 
   return { data, isLoading, error }
+}
+
+// Mutation hook: إضافة رصيد للمستخدم عبر مسارات الأدمن
+export function useCreditUserWallet() {
+  const [isLoading, setIsLoading] = useState(false)
+  const [error, setError] = useState<Error | null>(null)
+
+  const credit = async ({ userId, amount, description }: { userId: string; amount: number; description?: string }) => {
+    try {
+      setIsLoading(true)
+      setError(null)
+      const res = await fetch(`${API_BASE_URL}/api/admin/wallets/${userId}/add-balance`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ amount, description }),
+      })
+      if (!res.ok) {
+        const txt = await res.text().catch(() => '')
+        throw new Error(txt || 'Failed to credit user wallet')
+      }
+      return await res.json().catch(() => ({}))
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  return { credit, isLoading, error }
 }

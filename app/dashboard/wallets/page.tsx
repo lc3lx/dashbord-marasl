@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useCallback } from "react"
+import { useState, useEffect, useCallback, useMemo } from "react"
 import DashboardLayout from "@/components/dashboard/DashboardLayout"
 import {
   Wallet,
@@ -52,6 +52,7 @@ interface WalletWithCustomer {
 }
 
 interface TransactionWithCustomer extends Transaction {
+  customerId?: string
   customerName: string
   customerEmail: string
   walletId: string
@@ -62,6 +63,7 @@ interface BankTransferRequest {
   customerId?: string
   customerName: string
   customerEmail: string
+  customerPhone?: string
   amount: number
   status: string
   createdAt: string
@@ -113,6 +115,14 @@ export default function WalletsPage() {
   const [pendingPreview, setPendingPreview] = useState<BankTransferRequest[]>([])
   const [pendingPreviewLoading, setPendingPreviewLoading] = useState(false)
   const [pendingPreviewError, setPendingPreviewError] = useState<string | null>(null)
+  const [detailsOpen, setDetailsOpen] = useState(false)
+  const [selectedTransfer, setSelectedTransfer] = useState<BankTransferRequest | null>(null)
+  const [actionNote, setActionNote] = useState("")
+  const [transactionsUserFilter, setTransactionsUserFilter] = useState<string | null>(null)
+  const [walletDetailsOpen, setWalletDetailsOpen] = useState(false)
+  const [walletDetailsLoading, setWalletDetailsLoading] = useState(false)
+  const [walletDetailsError, setWalletDetailsError] = useState<string | null>(null)
+  const [selectedUserWallet, setSelectedUserWallet] = useState<any>(null)
   const [currentPage, setCurrentPage] = useState(1)
   const [itemsPerPage, setItemsPerPage] = useState(10)
   const [currentTransactionsPage, setCurrentTransactionsPage] = useState(1)
@@ -140,6 +150,7 @@ export default function WalletsPage() {
         customer?.email ||
         "عميل غير معروف",
       customerEmail: customer?.email || "غير متوفر",
+      customerPhone: customer?.phone || customer?.phoneNumber || undefined,
       amount: Number(item.amount) || 0,
       status: item.status || "pending",
       createdAt: item.createdAt || item.updatedAt || new Date().toISOString(),
@@ -245,9 +256,9 @@ export default function WalletsPage() {
         setLoading(true)
         setError(null)
 
+        // 1) جلب المحافظ
         const walletsResponse = await walletsAPI.getAll()
-
-        let walletsData = []
+        let walletsData: any[] = []
         if (walletsResponse?.result && Array.isArray(walletsResponse.result)) {
           walletsData = walletsResponse.result
         } else if (walletsResponse?.success && walletsResponse?.data) {
@@ -255,48 +266,52 @@ export default function WalletsPage() {
         } else if (Array.isArray(walletsResponse?.data)) {
           walletsData = walletsResponse.data
         } else if (Array.isArray(walletsResponse)) {
-          walletsData = walletsResponse
+          walletsData = walletsResponse as any[]
         }
 
-        const usersResponse = await usersAPI.getAll()
-
-        let usersData = []
+        // 2) جلب المستخدمين (بحد كبير لتغطية كل المحافظ)
+        const usersResponse = await usersAPI.getAll({ page: 1, limit: Math.max(1000, walletsData.length || 1000) })
+        let usersData: any[] = []
         if (usersResponse?.result && Array.isArray(usersResponse.result)) {
           usersData = usersResponse.result
         } else if (Array.isArray(usersResponse?.data)) {
           usersData = usersResponse.data
         } else if (Array.isArray(usersResponse)) {
-          usersData = usersResponse
+          usersData = usersResponse as any[]
         }
 
-        const transactionsWithCustomers: TransactionWithCustomer[] = []
+        const usersMap = new Map<string, any>()
+        usersData.forEach((u: any) => usersMap.set(String(u._id || u.id), u))
 
+        // 3) ربط اسم وبريد العميل بكل محفظة
         const walletsWithCustomers = walletsData.map((wallet: any) => {
-          const customerId = wallet.customerId
-
-          const customer = usersData.find((user: any) => {
-            const userId = user._id || user.id
-            return userId === customerId
-          })
-
-          const customerName = customer?.name || customer?.username || customer?.fullName || "غير معروف"
+          const cid = String(wallet.customerId || "")
+          const customer = usersMap.get(cid)
+          const customerName = [customer?.firstName, customer?.lastName].filter(Boolean).join(" ") || customer?.email || "غير معروف"
           const customerEmail = customer?.email || "غير متوفر"
+          return { ...wallet, customerName, customerEmail }
+        })
 
-          if (wallet.transactions && Array.isArray(wallet.transactions)) {
-            wallet.transactions.forEach((transaction: Transaction) => {
-              transactionsWithCustomers.push({
-                ...transaction,
-                customerName,
-                customerEmail,
-                walletId: wallet._id || wallet.id,
-              })
-            })
-          }
+        // 4) جلب كل المعاملات من الباك مباشرة
+        const txRes = await transactionsAPI.getAll()
+        let txItems: any[] = []
+        if (Array.isArray((txRes as any)?.data)) txItems = (txRes as any).data
+        else if (Array.isArray(txRes)) txItems = txRes as any[]
 
+        const transactionsWithCustomers: TransactionWithCustomer[] = txItems.map((t: any) => {
+          const cid = String(t.customerId || t.Customer || t.customer || "")
+          const customer = usersMap.get(cid)
+          const name = [customer?.firstName, customer?.lastName].filter(Boolean).join(" ") || customer?.email || cid
+          const email = customer?.email || "غير متوفر"
           return {
-            ...wallet,
-            customerName,
-            customerEmail,
+            ...t,
+            customerId: cid,
+            customerName: name,
+            customerEmail: email,
+            walletId: String(t.walletId || ""),
+            createdAt: t.createdAt || new Date().toISOString(),
+            amount: Number(t.amount) || 0,
+            type: t.type || "credit",
           }
         })
 
@@ -305,8 +320,9 @@ export default function WalletsPage() {
           transactionsWithCustomers.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()),
         )
       } catch (err: any) {
-        console.error("خطأ في جلب المحافظ:", err)
+        console.error("خطأ في جلب المحافظ/المعاملات:", err)
         setError(err.message || "فشل تحميل المحافظ")
+        setAllTransactions([])
       } finally {
         setLoading(false)
       }
@@ -315,12 +331,30 @@ export default function WalletsPage() {
     fetchWalletsWithCustomers()
   }, [])
 
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        if (detailsOpen) {
+          setDetailsOpen(false)
+          setSelectedTransfer(null)
+          setActionNote("")
+        }
+        if (walletDetailsOpen) {
+          setWalletDetailsOpen(false)
+          setSelectedUserWallet(null)
+        }
+      }
+    }
+    window.addEventListener("keydown", onKeyDown)
+    return () => window.removeEventListener("keydown", onKeyDown)
+  }, [detailsOpen, walletDetailsOpen])
+
   const filteredWallets = wallets.filter((wallet) => {
     const customerId = wallet.customerId || ""
     const customerName = wallet.customerName || ""
     const customerEmail = wallet.customerEmail || ""
     const walletBalance = wallet.balance || 0
-    const walletDate = wallet.createdAt || wallet.date || ""
+    const walletDate = wallet.createdAt || ""
 
     const matchesSearch =
       customerId.includes(searchTerm) ||
@@ -340,16 +374,31 @@ export default function WalletsPage() {
     const type = transaction.type || ""
     const description = transaction.description || ""
 
-    return (
+    const matchesSearch =
       customerName.toLowerCase().includes(searchTerm.toLowerCase()) ||
       customerEmail.toLowerCase().includes(searchTerm.toLowerCase()) ||
       type.toLowerCase().includes(searchTerm.toLowerCase()) ||
       description.toLowerCase().includes(searchTerm.toLowerCase())
-    )
+
+    const matchesUser = !transactionsUserFilter || String(transaction.customerId || "") === String(transactionsUserFilter)
+    return matchesSearch && matchesUser
   })
 
+  const txCountByCustomer = useMemo(() => {
+    const m = new Map<string, number>()
+    allTransactions.forEach((t: any) => {
+      const cid = String(t.customerId || "")
+      if (!cid) return
+      m.set(cid, (m.get(cid) || 0) + 1)
+    })
+    return m
+  }, [allTransactions])
+
   const totalBalance = filteredWallets.reduce((sum, wallet) => sum + (wallet.balance || 0), 0)
-  const totalTransactions = filteredWallets.reduce((sum, wallet) => sum + (wallet.transactions?.length || 0), 0)
+  const totalTransactions = filteredWallets.reduce(
+    (sum, wallet) => sum + (txCountByCustomer.get(String(wallet.customerId)) || 0),
+    0,
+  )
 
   const printColumns = [
     { key: "customerName", label: "اسم العميل" },
@@ -359,16 +408,46 @@ export default function WalletsPage() {
     { key: "createdAt", label: "تاريخ الإنشاء" },
   ]
 
-  const handleApproveTransfer = (requestId: string) => {
-    setBankTransferRequests((prev) =>
-      prev.map((req) => (req._id === requestId ? { ...req, status: "approved" as const } : req)),
-    )
+  const handleApproveTransfer = async (requestId: string, note?: string) => {
+    try {
+      setTransferActionLoading(requestId)
+      await adminWalletsAPI.approveBankTransfer(requestId, { approved: true, notes: note || "" })
+      setBankTransferRequests((prev) =>
+        prev.map((req) =>
+          req._id === requestId ? { ...req, status: "completed" as const, notes: note || req.notes } : req,
+        ),
+      )
+      if (selectedTransfer && selectedTransfer._id === requestId) {
+        setSelectedTransfer({ ...selectedTransfer, status: "completed", notes: note || selectedTransfer.notes })
+      }
+      alert("تمت الموافقة على التحويل وإضافة الرصيد")
+      fetchBankTransfers()
+      fetchPendingPreview()
+    } catch (e: any) {
+      alert(e?.message || "فشل الموافقة على التحويل")
+    } finally {
+      setTransferActionLoading(null)
+    }
   }
 
-  const handleRejectTransfer = (requestId: string) => {
-    setBankTransferRequests((prev) =>
-      prev.map((req) => (req._id === requestId ? { ...req, status: "rejected" as const } : req)),
-    )
+  const handleRejectTransfer = async (requestId: string, note?: string) => {
+    try {
+      setTransferActionLoading(requestId)
+      await adminWalletsAPI.approveBankTransfer(requestId, { approved: false, notes: note || "" })
+      setBankTransferRequests((prev) =>
+        prev.map((req) => (req._id === requestId ? { ...req, status: "rejected" as const, notes: note || req.notes } : req)),
+      )
+      if (selectedTransfer && selectedTransfer._id === requestId) {
+        setSelectedTransfer({ ...selectedTransfer, status: "rejected", notes: note || selectedTransfer.notes })
+      }
+      alert("تم رفض التحويل")
+      fetchBankTransfers()
+      fetchPendingPreview()
+    } catch (e: any) {
+      alert(e?.message || "فشل رفض التحويل")
+    } finally {
+      setTransferActionLoading(null)
+    }
   }
 
   const pendingTransfers = pendingPreview.length
@@ -388,6 +467,21 @@ export default function WalletsPage() {
   const transactionsStartIndex = (currentTransactionsPage - 1) * transactionsPerPage
   const transactionsEndIndex = transactionsStartIndex + transactionsPerPage
   const paginatedTransactions = filteredTransactions.slice(transactionsStartIndex, transactionsEndIndex)
+
+  const openUserWalletDetails = async (customerId: string) => {
+    try {
+      setWalletDetailsOpen(true)
+      setWalletDetailsLoading(true)
+      setWalletDetailsError(null)
+      const res = await adminWalletsAPI.getUserWallet(customerId)
+      const payload = (res as any)?.data?.data || (res as any)?.data || (res as any)
+      setSelectedUserWallet(payload)
+    } catch (e: any) {
+      setWalletDetailsError(e?.message || "فشل تحميل تفاصيل المحفظة")
+    } finally {
+      setWalletDetailsLoading(false)
+    }
+  }
 
   return (
     <DashboardLayout>
@@ -670,14 +764,20 @@ export default function WalletsPage() {
                             <td className="px-4 py-3">
                               <div className="flex items-center justify-center gap-2">
                                 <button
-                                  onClick={() => handleApproveTransfer(request._id)}
+                                  onClick={() => {
+                                    const note = prompt("أدخل ملاحظة (اختياري):") || ""
+                                    handleApproveTransfer(request._id, note)
+                                  }}
                                   disabled={transferActionLoading === request._id}
                                   className="px-3 py-1 text-sm rounded-lg bg-green-100 text-green-700 hover:bg-green-200 disabled:opacity-50"
                                 >
                                   موافقة
                                 </button>
                                 <button
-                                  onClick={() => handleRejectTransfer(request._id)}
+                                  onClick={() => {
+                                    const note = prompt("سبب الرفض (اختياري):") || ""
+                                    handleRejectTransfer(request._id, note)
+                                  }}
                                   disabled={transferActionLoading === request._id}
                                   className="px-3 py-1 text-sm rounded-lg bg-red-100 text-red-700 hover:bg-red-200 disabled:opacity-50"
                                 >
@@ -850,7 +950,10 @@ export default function WalletsPage() {
                             <motion.button
                               whileHover={{ scale: 1.05 }}
                               whileTap={{ scale: 0.95 }}
-                              onClick={() => handleApproveTransfer(request._id)}
+                              onClick={() => {
+                                const note = prompt("أدخل ملاحظة (اختياري):") || ""
+                                handleApproveTransfer(request._id, note)
+                              }}
                               className="flex items-center gap-1 px-3 py-2 bg-green-100 text-green-700 rounded-lg hover:bg-green-200 transition-colors text-sm font-medium"
                             >
                               <CheckCircle2 className="w-4 h-4" />
@@ -859,7 +962,10 @@ export default function WalletsPage() {
                             <motion.button
                               whileHover={{ scale: 1.05 }}
                               whileTap={{ scale: 0.95 }}
-                              onClick={() => handleRejectTransfer(request._id)}
+                              onClick={() => {
+                                const note = prompt("سبب الرفض (اختياري):") || ""
+                                handleRejectTransfer(request._id, note)
+                              }}
                               className="flex items-center gap-1 px-3 py-2 bg-red-100 text-red-700 rounded-lg hover:bg-red-200 transition-colors text-sm font-medium"
                             >
                               <XCircle className="w-4 h-4" />
@@ -868,6 +974,10 @@ export default function WalletsPage() {
                             <motion.button
                               whileHover={{ scale: 1.05 }}
                               whileTap={{ scale: 0.95 }}
+                              onClick={() => {
+                                setSelectedTransfer(request)
+                                setDetailsOpen(true)
+                              }}
                               className="flex items-center gap-1 px-3 py-2 bg-purple-100 text-purple-700 rounded-lg hover:bg-purple-200 transition-colors text-sm font-medium"
                             >
                               <Eye className="w-4 h-4" />
@@ -1238,7 +1348,7 @@ export default function WalletsPage() {
                           const customerName = wallet.customerName || "غير معروف"
                           const customerEmail = wallet.customerEmail || "غير متوفر"
                           const walletBalance = wallet.balance || 0
-                          const transactionsCount = wallet.transactions?.length || 0
+                          const transactionsCount = txCountByCustomer.get(String(wallet.customerId)) || 0
                           const createdAt = wallet.createdAt
                             ? new Date(wallet.createdAt).toLocaleDateString("ar-SA", {
                                 year: "numeric",
@@ -1303,6 +1413,7 @@ export default function WalletsPage() {
                                   <motion.button
                                     whileHover={{ scale: 1.05 }}
                                     whileTap={{ scale: 0.95 }}
+                                    onClick={() => openUserWalletDetails(String(wallet.customerId))}
                                     className="px-4 py-2 bg-amber-100 text-amber-700 rounded-lg hover:bg-amber-200 transition-colors font-medium text-sm"
                                   >
                                     عرض التفاصيل
@@ -1311,6 +1422,11 @@ export default function WalletsPage() {
                                     <motion.button
                                       whileHover={{ scale: 1.05 }}
                                       whileTap={{ scale: 0.95 }}
+                                      onClick={() => {
+                                        setTransactionsUserFilter(String(wallet.customerId))
+                                        setShowTransactions(true)
+                                        setCurrentTransactionsPage(1)
+                                      }}
                                       className="px-4 py-2 bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200 transition-colors font-medium text-sm"
                                     >
                                       المعاملات ({transactionsCount})
@@ -1329,6 +1445,214 @@ export default function WalletsPage() {
             </div>
           )}
         </motion.div>
+        {detailsOpen && selectedTransfer && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" role="dialog" aria-modal>
+            <div className="bg-white w-full max-w-4xl rounded-2xl shadow-2xl overflow-hidden">
+              <div className="bg-gradient-to-r from-purple-600 to-purple-700 px-6 py-5 flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="w-12 h-12 bg-white/20 rounded-xl flex items-center justify-center">
+                    <Building2 className="w-6 h-6 text-white" />
+                  </div>
+                  <div>
+                    <h3 className="text-xl font-bold text-white">تفاصيل التحويل البنكي</h3>
+                    <p className="text-purple-100 text-sm">طلب رقم: {selectedTransfer._id}</p>
+                  </div>
+                </div>
+                <button onClick={() => { setDetailsOpen(false); setSelectedTransfer(null); setActionNote("") }} className="p-2 hover:bg-white/10 rounded-lg transition-colors">
+                  <XCircle className="w-6 h-6 text-white" />
+                </button>
+              </div>
+              <div className="p-6 grid grid-cols-1 lg:grid-cols-3 gap-6">
+                <div className="lg:col-span-1 space-y-4">
+                  <div className="bg-white border rounded-xl p-4">
+                    <h4 className="font-semibold text-gray-900 mb-3">العميل</h4>
+                    <div className="flex items-center gap-3">
+                      <div className="w-12 h-12 bg-gradient-to-br from-purple-500 to-purple-600 rounded-lg flex items-center justify-center text-white">
+                        <User className="w-6 h-6" />
+                      </div>
+                      <div>
+                        <p className="font-medium text-gray-900">{selectedTransfer.customerName}</p>
+                        <p className="text-sm text-gray-600 flex items-center gap-1"><Mail className="w-4 h-4" />{selectedTransfer.customerEmail}</p>
+                      </div>
+                    </div>
+                    <div className="mt-4 text-sm text-gray-600 space-y-2">
+                      <div className="flex items-center gap-2"><DollarSign className="w-4 h-4 text-purple-600" />
+                        <span className="font-semibold text-gray-900">{selectedTransfer.amount.toLocaleString()} ر.س</span>
+                      </div>
+                      <div className="flex items-center gap-2"><Clock className="w-4 h-4 text-gray-500" />
+                        <span>{new Date(selectedTransfer.createdAt).toLocaleString("ar-SA")}</span>
+                      </div>
+                      <div>
+                        <span className="text-gray-500">الحالة:</span>{" "}
+                        <span className={`px-2 py-1 rounded-full text-xs font-semibold ${selectedTransfer.status === 'completed' ? 'bg-green-100 text-green-700' : selectedTransfer.status === 'rejected' ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-700'}`}>{selectedTransfer.status}</span>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="bg-white border rounded-xl p-4">
+                    <h4 className="font-semibold text-gray-900 mb-3">ملاحظات الإجراء</h4>
+                    <textarea value={actionNote} onChange={(e) => setActionNote(e.target.value)} placeholder="اكتب ملاحظة للموافقة/الرفض (اختياري)" className="w-full border rounded-lg p-2 h-24 focus:ring-2 focus:ring-purple-500 focus:outline-none" />
+                    <div className="mt-3 flex gap-2">
+                      <button
+                        disabled={transferActionLoading === selectedTransfer._id}
+                        onClick={() => handleApproveTransfer(selectedTransfer._id, actionNote)}
+                        className="flex-1 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50">
+                        موافقة
+                      </button>
+                      <button
+                        disabled={transferActionLoading === selectedTransfer._id}
+                        onClick={() => handleRejectTransfer(selectedTransfer._id, actionNote)}
+                        className="flex-1 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50">
+                        رفض
+                      </button>
+                    </div>
+                  </div>
+                </div>
+                <div className="lg:col-span-2 space-y-4">
+                  <div className="bg-white border rounded-xl p-4">
+                    <h4 className="font-semibold text-gray-900 mb-3">معلومات الحساب البنكي</h4>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+                      <div>
+                        <p className="text-gray-500">البنك</p>
+                        <p className="font-medium text-gray-900">{selectedTransfer.bankName || 'غير متوفر'}</p>
+                      </div>
+                      <div>
+                        <p className="text-gray-500">رقم الحساب</p>
+                        <p className="font-mono font-medium text-gray-900">{selectedTransfer.accountNumber || 'غير متوفر'}</p>
+                      </div>
+                      <div>
+                        <p className="text-gray-500">اسم صاحب الحساب</p>
+                        <p className="font-medium text-gray-900">{selectedTransfer.accountHolder || 'غير متوفر'}</p>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="bg-white border rounded-xl p-4">
+                    <h4 className="font-semibold text-gray-900 mb-3">إيصال التحويل</h4>
+                    {selectedTransfer.bankReceipt ? (
+                      <div className="rounded-xl overflow-hidden border">
+                        <img src={selectedTransfer.bankReceipt} alt="Bank Receipt" className="w-full max-h-[520px] object-contain bg-gray-50" />
+                      </div>
+                    ) : (
+                      <p className="text-sm text-gray-600">لا يوجد إيصال مرفق</p>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+        {walletDetailsOpen && (
+          <div
+            className="fixed inset-0 z-50 flex items-start justify-center bg-black/40 p-4 overflow-y-auto"
+            role="dialog"
+            aria-modal
+          >
+            <div className="bg-white w-full max-w-5xl rounded-2xl shadow-2xl flex flex-col max-h-[90vh] overflow-hidden">
+              <div className="bg-gradient-to-r from-amber-600 to-orange-600 px-6 py-5 flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="w-12 h-12 bg-white/20 rounded-xl flex items-center justify-center">
+                    <Wallet className="w-6 h-6 text-white" />
+                  </div>
+                  <div>
+                    <h3 className="text-xl font-bold text-white">تفاصيل محفظة المستخدم</h3>
+                    <p className="text-amber-100 text-sm">عرض معلومات العميل وآخر المعاملات</p>
+                  </div>
+                </div>
+                <button onClick={() => { setWalletDetailsOpen(false); setSelectedUserWallet(null) }} className="p-2 hover:bg-white/10 rounded-lg transition-colors">
+                  <XCircle className="w-6 h-6 text-white" />
+                </button>
+              </div>
+              <div className="p-6 grid grid-cols-1 lg:grid-cols-3 gap-6">
+                <div className="lg:col-span-1 space-y-4">
+                  <div className="bg-white border rounded-xl p-4">
+                    <h4 className="font-semibold text-gray-900 mb-3">العميل</h4>
+                    {walletDetailsLoading ? (
+                      <div className="py-8 flex items-center justify-center"><Loader2 className="w-6 h-6 text-amber-600 animate-spin" /></div>
+                    ) : walletDetailsError ? (
+                      <div className="text-red-600 text-sm">{walletDetailsError}</div>
+                    ) : (
+                      <>
+                        <div className="flex items-center gap-3">
+                          <div className="w-12 h-12 bg-gradient-to-br from-amber-500 to-orange-600 rounded-lg flex items-center justify-center text-white">
+                            <User className="w-6 h-6" />
+                          </div>
+                          <div>
+                            <p className="font-medium text-gray-900">{selectedUserWallet?.user?.name || '-'}</p>
+                            <p className="text-sm text-gray-600 flex items-center gap-1"><Mail className="w-4 h-4" />{selectedUserWallet?.user?.email || 'غير متوفر'}</p>
+                          </div>
+                        </div>
+                        <div className="mt-4 text-sm text-gray-600 space-y-2">
+                          <div className="flex items-center gap-2"><DollarSign className="w-4 h-4 text-amber-600" />
+                            <span className="font-semibold text-gray-900">{Number(selectedUserWallet?.wallet?.balance || 0).toLocaleString()} ر.س</span>
+                          </div>
+                          <div className="flex items-center gap-2"><Clock className="w-4 h-4 text-gray-500" />
+                            <span>الحالة: {selectedUserWallet?.user?.active ? 'نشط' : 'غير نشط'}</span>
+                          </div>
+                          <div className="flex gap-2">
+                            <button
+                              onClick={() => {
+                                if (selectedUserWallet?.user?.id) {
+                                  setTransactionsUserFilter(String(selectedUserWallet.user.id))
+                                  setShowTransactions(true)
+                                  setCurrentTransactionsPage(1)
+                                  setWalletDetailsOpen(false)
+                                }
+                              }}
+                              className="px-3 py-2 text-sm rounded-lg bg-blue-100 text-blue-700 hover:bg-blue-200">
+                              عرض معاملات هذا المستخدم
+                            </button>
+                          </div>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                </div>
+                <div className="lg:col-span-2 space-y-4">
+                  <div className="bg-white border rounded-xl p-4 h-full flex flex-col">
+                    <h4 className="font-semibold text-gray-900 mb-3">آخر المعاملات</h4>
+                    {walletDetailsLoading ? (
+                      <div className="py-8 flex items-center justify-center"><Loader2 className="w-6 h-6 text-amber-600 animate-spin" /></div>
+                    ) : walletDetailsError ? (
+                      <div className="text-red-600 text-sm">{walletDetailsError}</div>
+                    ) : (
+                      <div className="overflow-x-auto flex-1">
+                        <table className="w-full min-w-max">
+                          <thead className="bg-gray-50 text-right text-sm text-gray-600">
+                            <tr>
+                              <th className="px-4 py-3">النوع</th>
+                              <th className="px-4 py-3">المبلغ</th>
+                              <th className="px-4 py-3">الوصف</th>
+                              <th className="px-4 py-3">التاريخ</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-gray-100">
+                            {(selectedUserWallet?.transactions || []).map((t: any) => {
+                              const isDeposit = String(t.type || '').toLowerCase() === 'credit' || Number(t.amount) > 0
+                              return (
+                                <tr key={String(t._id)} className="hover:bg-gray-50/80">
+                                  <td className="px-4 py-3">
+                                    <span className={`px-2 py-1 rounded-full text-xs font-semibold ${isDeposit ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>{isDeposit ? 'إيداع' : 'خصم'}</span>
+                                  </td>
+                                  <td className="px-4 py-3">
+                                    <span className={`font-bold ${isDeposit ? 'text-green-700' : 'text-red-700'}`}>{Number(t.amount || 0).toLocaleString()} ر.س</span>
+                                  </td>
+                                  <td className="px-4 py-3 text-sm text-gray-600">{t.description || '-'}</td>
+                                  <td className="px-4 py-3 text-sm text-gray-600">{new Date(t.createdAt).toLocaleString('ar-SA')}</td>
+                                </tr>
+                              )
+                            })}
+                          </tbody>
+                        </table>
+                        {(!selectedUserWallet?.transactions || selectedUserWallet.transactions.length === 0) && (
+                          <div className="p-6 text-center text-gray-500">لا توجد معاملات</div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </DashboardLayout>
   )

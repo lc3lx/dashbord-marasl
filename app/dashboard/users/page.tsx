@@ -7,7 +7,7 @@ import { motion, AnimatePresence } from "framer-motion"
 import AdvancedFilterPanel from "@/components/filters/AdvancedFilterPanel"
 import EnhancedPrintButton from "@/components/print/EnhancedPrintButton11"
 import { Input } from "@/components/ui/input"
-import { usersAPI, walletsAPI } from "@/lib/api"
+import { usersAPI, adminWalletsAPI } from "@/lib/api"
 
 export default function UsersPage() {
   const [searchTerm, setSearchTerm] = useState("")
@@ -36,6 +36,8 @@ export default function UsersPage() {
   const [walletDescription, setWalletDescription] = useState("")
   const [walletActionType, setWalletActionType] = useState<"add" | "deduct" | null>(null)
   const [walletLoading, setWalletLoading] = useState(false)
+  const [userWalletInfo, setUserWalletInfo] = useState<any>(null)
+  const [userWalletLoading, setUserWalletLoading] = useState(false)
 
   const periods = [
     { label: "يومي", value: "day" },
@@ -166,7 +168,7 @@ export default function UsersPage() {
     setSelectedPeriod(value)
   }
 
-  const handleEditUser = (user: any) => {
+  const handleEditUser = async (user: any) => {
     setSelectedUser(user)
     setEditFormData({
       firstName: user.firstName || "",
@@ -180,6 +182,19 @@ export default function UsersPage() {
     setWalletDescription("")
     setWalletActionType(null)
     setIsEditModalOpen(true)
+
+    try {
+      setUserWalletLoading(true)
+      setUserWalletInfo(null)
+      const customerId = user._id || user.id
+      const res = await adminWalletsAPI.getUserWallet(String(customerId))
+      const payload = (res as any)?.data?.data || (res as any)?.data || (res as any)
+      setUserWalletInfo(payload)
+    } catch {
+      setUserWalletInfo(null)
+    } finally {
+      setUserWalletLoading(false)
+    }
   }
 
   const handleWalletAction = async () => {
@@ -196,10 +211,22 @@ export default function UsersPage() {
       const customerId = selectedUser._id || selectedUser.id
 
       if (walletActionType === "add") {
-        await walletsAPI.addBalance(customerId, amount, walletDescription || "إضافة رصيد من لوحة التحكم")
+        await adminWalletsAPI.addBalanceToUser(String(customerId), {
+          amount,
+          description: walletDescription || "إضافة رصيد من لوحة التحكم",
+        })
       } else {
-        await walletsAPI.deductBalance(customerId, amount, walletDescription || "خصم رصيد من لوحة التحكم")
+        await adminWalletsAPI.subtractBalanceFromUser(String(customerId), {
+          amount,
+          description: walletDescription || "خصم رصيد من لوحة التحكم",
+        })
       }
+
+      try {
+        const res = await adminWalletsAPI.getUserWallet(String(customerId))
+        const payload = (res as any)?.data?.data || (res as any)?.data || (res as any)
+        setUserWalletInfo(payload)
+      } catch {}
 
       const usersResponse = await usersAPI.getAll()
       let usersData = []
@@ -1020,7 +1047,12 @@ export default function UsersPage() {
                           <div>
                             <p className="text-sm text-gray-600 font-medium">الرصيد الإجمالي</p>
                             <p className="text-2xl font-bold text-gray-900">
-                              {(selectedUser?.wallet?.balance || selectedUser?.walletBalance || 0).toLocaleString()}{" "}
+                              {(
+                                userWalletInfo?.wallet?.balance ??
+                                selectedUser?.wallet?.balance ??
+                                selectedUser?.walletBalance ??
+                                0
+                              ).toLocaleString()} {" "}
                               ريال
                             </p>
                           </div>
@@ -1028,9 +1060,14 @@ export default function UsersPage() {
                         <div className="text-left">
                           <p className="text-xs text-gray-500">آخر تحديث</p>
                           <p className="text-sm text-gray-700 font-medium">
-                            {selectedUser?.wallet?.lastUpdate || selectedUser?.walletLastUpdate
-                              ? formatDate(selectedUser?.wallet?.lastUpdate || selectedUser?.walletLastUpdate)
-                              : "لا يوجد"}
+                            {(() => {
+                              const d =
+                                userWalletInfo?.wallet?.updatedAt ||
+                                userWalletInfo?.wallet?.lastUpdate ||
+                                selectedUser?.wallet?.lastUpdate ||
+                                selectedUser?.walletLastUpdate
+                              return d ? formatDate(String(d)) : "لا يوجد"
+                            })()}
                           </p>
                         </div>
                       </div>

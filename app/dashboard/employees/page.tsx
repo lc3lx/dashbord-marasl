@@ -34,7 +34,7 @@ import {
   FileText,
   Filter,
 } from "lucide-react"
-import { useState, useMemo } from "react"
+import { useState, useMemo, useEffect } from "react"
 import {
   Dialog,
   DialogContent,
@@ -46,6 +46,7 @@ import {
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Checkbox } from "@/components/ui/checkbox"
+import { adminEmployeesAPI } from "@/lib/api"
 
 export default function EmployeesPage() {
   const router = useRouter()
@@ -75,6 +76,10 @@ export default function EmployeesPage() {
     workingDays: [] as string[],
     breakDuration: "",
   })
+
+  const [loading, setLoading] = useState(false)
+  const [page, setPage] = useState(1)
+  const [editId, setEditId] = useState<string | null>(null)
 
   const periods = [
     { value: "day", label: "يومي" },
@@ -267,61 +272,151 @@ export default function EmployeesPage() {
     },
   ])
 
-  const handleAddEmployee = (e: React.FormEvent) => {
+  const getRange = () => {
+    const now = new Date()
+    const start = new Date(now)
+    let startDate: Date | null = null
+    let endDate: Date | null = now
+    switch (selectedPeriod) {
+      case "day":
+        start.setHours(0, 0, 0, 0)
+        startDate = start
+        break
+      case "week": {
+        const day = now.getDay()
+        const diff = day === 0 ? 6 : day - 1
+        start.setDate(now.getDate() - diff)
+        start.setHours(0, 0, 0, 0)
+        startDate = start
+        break
+      }
+      case "month":
+        start.setDate(1)
+        start.setHours(0, 0, 0, 0)
+        startDate = start
+        break
+      case "year":
+        start.setMonth(0, 1)
+        start.setHours(0, 0, 0, 0)
+        startDate = start
+        break
+      default:
+        startDate = null
+    }
+    return { startDate, endDate }
+  }
+
+  const refetchEmployees = async () => {
+    try {
+      setLoading(true)
+      const { startDate, endDate } = getRange()
+      const params: any = { page, limit: 1000 }
+      if (searchQuery) params.search = searchQuery
+      if (startDate) params.startDate = startDate.toISOString()
+      if (endDate) params.endDate = endDate.toISOString()
+      const res = await adminEmployeesAPI.getAll(params)
+      const docs = res?.data || []
+      const mapped = (docs as any[]).map((d) => ({
+        id: d._id,
+        name: d.name || "",
+        email: d.email || "",
+        phone: d.phone || "",
+        role: d.role || "",
+        department: d.department || "",
+        status: d.status || "نشط",
+        joinDate: d.joinDate ? new Date(d.joinDate).toISOString().slice(0, 10) : "",
+        avatar: d.avatar || "👤",
+        color: d.color || "#6366f1",
+        permissions: Array.isArray(d.permissions) ? d.permissions : [],
+        salary: Number(d.salary ?? d?.payroll?.baseSalary ?? 0),
+        attendance: {
+          present: Number(d?.attendance?.present || 0),
+          absent: Number(d?.attendance?.absent || 0),
+          late: Number(d?.attendance?.late || 0),
+          onTime: Number(d?.attendance?.onTime || 0),
+          totalDays: Number(d?.attendance?.totalDays || 0),
+        },
+        payroll: {
+          baseSalary: Number(d?.payroll?.baseSalary || 0),
+          bonuses: Number(d?.payroll?.bonuses || 0),
+          deductions: Number(d?.payroll?.deductions || 0),
+          netSalary: Number(d?.payroll?.netSalary || 0),
+          lastPayment: d?.payroll?.lastPayment
+            ? new Date(d.payroll.lastPayment).toISOString().slice(0, 10)
+            : "",
+          paymentStatus: d?.payroll?.paymentStatus || "معلق",
+        },
+      }))
+      setEmployees(mapped)
+    } catch (e) {
+      console.error("[Employees] fetch error", e)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    refetchEmployees()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedPeriod, searchQuery])
+
+  const handleAddEmployee = async (e: React.FormEvent) => {
     e.preventDefault()
 
-    const newEmployee = {
-      id: employees.length + 1,
+    const payload: any = {
       name: formData.name,
       email: formData.email,
       phone: formData.phone,
       role: formData.role,
       department: formData.department,
       status: formData.status,
-      joinDate: new Date().toISOString().split("T")[0],
-      avatar: "👤",
-      color: "#6366f1",
+      address: formData.address,
+      nationalId: formData.nationalId,
+      contractType: formData.contractType,
       permissions: formData.permissions.length > 0 ? formData.permissions : ["عرض التقارير"],
       salary: Number(formData.salary) || 0,
-      attendance: {
-        present: 0,
-        absent: 0,
-        late: 0,
-        onTime: 0,
-        totalDays: 0,
-      },
-      payroll: {
-        baseSalary: Number(formData.salary) || 0,
-        bonuses: 0,
-        deductions: 0,
-        netSalary: Number(formData.salary) || 0,
-        lastPayment: new Date().toISOString().split("T")[0],
-        paymentStatus: "معلق",
-      },
+      shift: formData.shift,
+      startTime: formData.startTime,
+      endTime: formData.endTime,
+      workingDays: formData.workingDays,
+      breakDuration: formData.breakDuration,
     }
 
-    setEmployees([...employees, newEmployee])
-    setIsDialogOpen(false)
-    setFormData({
-      name: "",
-      email: "",
-      phone: "",
-      role: "",
-      department: "",
-      salary: "",
-      address: "",
-      nationalId: "",
-      contractType: "",
-      status: "نشط",
-      emergencyContact: "",
-      emergencyPhone: "",
-      permissions: [],
-      shift: "",
-      startTime: "",
-      endTime: "",
-      workingDays: [],
-      breakDuration: "",
-    })
+    try {
+      setLoading(true)
+      if (editId) {
+        await adminEmployeesAPI.update(editId, payload)
+      } else {
+        await adminEmployeesAPI.create(payload)
+      }
+      await refetchEmployees()
+      setIsDialogOpen(false)
+      setEditId(null)
+      setFormData({
+        name: "",
+        email: "",
+        phone: "",
+        role: "",
+        department: "",
+        salary: "",
+        address: "",
+        nationalId: "",
+        contractType: "",
+        status: "نشط",
+        emergencyContact: "",
+        emergencyPhone: "",
+        permissions: [],
+        shift: "",
+        startTime: "",
+        endTime: "",
+        workingDays: [],
+        breakDuration: "",
+      })
+    } catch (err) {
+      console.error("[Employees] save error", err)
+    } finally {
+      setLoading(false)
+    }
   }
 
   const togglePermission = (permission: string) => {
@@ -935,7 +1030,7 @@ export default function EmployeesPage() {
             {/* Individual Employee Payroll */}
             <div className="space-y-4">
               <h3 className="text-lg font-semibold text-gray-900">تفاصيل الرواتب الفردية</h3>
-              {periodFilteredEmployees.map((employee) => (
+              {periodFilteredEmployees.map((employee, index) => (
                 <div
                   key={employee.id}
                   className="border border-gray-200 rounded-xl p-5 hover:shadow-md transition-shadow"
@@ -1044,12 +1139,12 @@ export default function EmployeesPage() {
           <h2 className="text-2xl font-bold text-gray-900 mb-6">قائمة الموظفين</h2>
 
           <div className="space-y-4">
-            {periodFilteredEmployees.map((employee) => (
+            {periodFilteredEmployees.map((employee, index) => (
               <motion.div
                 key={employee.id}
                 initial={{ opacity: 0, x: -20 }}
                 animate={{ opacity: 1, x: 0 }}
-                transition={{ delay: employee.id * 0.05 }}
+                transition={{ delay: index * 0.05 }}
                 className="border border-gray-200 rounded-xl p-6 hover:shadow-lg transition-shadow"
               >
                 <div className="flex items-start justify-between flex-wrap gap-4">
@@ -1108,10 +1203,46 @@ export default function EmployeesPage() {
                   </div>
 
                   <div className="flex items-center gap-2">
-                    <button className="p-2 hover:bg-blue-50 rounded-lg transition-colors group">
+                    <button
+                      onClick={() => {
+                        setEditId(String(employee.id))
+                        setFormData({
+                          name: employee.name || "",
+                          email: employee.email || "",
+                          phone: employee.phone || "",
+                          role: employee.role || "",
+                          department: employee.department || "",
+                          salary: String(employee.salary || ""),
+                          address: "",
+                          nationalId: "",
+                          contractType: "",
+                          status: employee.status || "نشط",
+                          emergencyContact: "",
+                          emergencyPhone: "",
+                          permissions: Array.isArray(employee.permissions) ? employee.permissions : [],
+                          shift: "",
+                          startTime: "",
+                          endTime: "",
+                          workingDays: [],
+                          breakDuration: "",
+                        })
+                        setIsDialogOpen(true)
+                      }}
+                      className="p-2 hover:bg-blue-50 rounded-lg transition-colors group"
+                    >
                       <Edit className="w-5 h-5 text-gray-600 group-hover:text-blue-600" />
                     </button>
-                    <button className="p-2 hover:bg-red-50 rounded-lg transition-colors group">
+                    <button
+                      onClick={async () => {
+                        try {
+                          await adminEmployeesAPI.delete(String(employee.id))
+                          await refetchEmployees()
+                        } catch (err) {
+                          console.error("[Employees] delete error", err)
+                        }
+                      }}
+                      className="p-2 hover:bg-red-50 rounded-lg transition-colors group"
+                    >
                       <Trash2 className="w-5 h-5 text-gray-600 group-hover:text-red-600" />
                     </button>
                   </div>
@@ -1340,7 +1471,7 @@ export default function EmployeesPage() {
                       <SelectContent>
                         <SelectItem value="نشط">نشط</SelectItem>
                         <SelectItem value="إجازة">إجازة</SelectItem>
-                        <SelectItem value="معلق">معلق</SelectItem>
+                        <SelectItem value="موقوف">موقوف</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>

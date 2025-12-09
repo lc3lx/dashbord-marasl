@@ -5,7 +5,7 @@ import { useParams } from 'next/navigation';
 import { useAuth } from '../../../providers/AuthProvider';
 import Link from 'next/link';
 import { User, Mail, Phone, Calendar, MapPin, Package, CreditCard, Activity, ArrowLeft, TrendingUp, Edit, Ban, Wallet, Eye, Clock, CheckCircle } from 'lucide-react';
-import { useGetUserWalletQuery, useGetUserActivityQuery } from '../../../api/adminApi';
+import { useGetUserWalletQuery, useGetUserActivityQuery, useCreditUserWallet } from '../../../api/adminApi';
 import { motion } from 'framer-motion';
 import DashboardLayout from "@/components/dashboard/DashboardLayout";
 
@@ -37,8 +37,9 @@ export default function UserDetails() {
   };
   
   // Real data
-  const { data: walletResp, isLoading: walletLoading } = useGetUserWalletQuery({ userId });
+  const { data: walletResp, isLoading: walletLoading, refetch: refetchWallet } = useGetUserWalletQuery({ userId });
   const { data: activityResp, isLoading: activityLoading } = useGetUserActivityQuery({ userId });
+  const { credit, isLoading: creditLoading } = useCreditUserWallet();
   const profile = walletResp?.data?.user;
   const wallet = walletResp?.data?.wallet;
   const transactions = walletResp?.data?.transactions || [];
@@ -297,6 +298,27 @@ export default function UserDetails() {
                         <Wallet className="w-4 h-4 text-amber-500" />
                         <span className="text-sm text-amber-600 font-medium">ريال سعودي</span>
                       </div>
+                    </div>
+                    <div className="mt-3">
+                      <button
+                        disabled={creditLoading}
+                        onClick={async () => {
+                          const amountStr = window.prompt('أدخل المبلغ المطلوب إضافته (ريال):') || ''
+                          const amount = parseFloat(amountStr)
+                          if (!amount || amount <= 0 || !isFinite(amount)) { alert('الرجاء إدخال مبلغ صحيح'); return }
+                          const note = window.prompt('ملاحظة (اختياري):') || undefined
+                          try {
+                            await credit({ userId, amount, description: note })
+                            await refetchWallet()
+                            alert('تمت إضافة الرصيد بنجاح')
+                          } catch (e: any) {
+                            alert(e?.message || 'فشل إضافة الرصيد')
+                          }
+                        }}
+                        className="px-4 py-2 rounded-lg bg-amber-600 text-white hover:bg-amber-700 transition disabled:opacity-50"
+                      >
+                        إضافة رصيد
+                      </button>
                     </div>
                   </div>
                 </motion.div>
