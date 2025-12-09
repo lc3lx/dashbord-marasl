@@ -1,10 +1,11 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import DashboardLayout from "@/components/dashboard/DashboardLayout"
 import { Bell, Search, Send, Users, CheckCircle2, Calendar, Filter, Settings } from "lucide-react"
 import { motion } from "framer-motion"
 import { Input } from "@/components/ui/input"
+import { adminNotificationsAPI } from "@/lib/api"
 
 export default function NotificationsPage() {
   const [searchTerm, setSearchTerm] = useState("")
@@ -13,6 +14,9 @@ export default function NotificationsPage() {
   const [customDateFrom, setCustomDateFrom] = useState("")
   const [customDateTo, setCustomDateTo] = useState("")
   const [showSettings, setShowSettings] = useState(false)
+  const [items, setItems] = useState<any[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
 
   const periods = [
     { label: "يومي", value: "day" },
@@ -28,33 +32,75 @@ export default function NotificationsPage() {
     { label: "قيد الانتظار", value: "pending", icon: Send },
   ]
 
-  const notifications = [
-    {
-      id: 1,
-      title: "تحديث النظام",
-      message: "تم تحديث النظام إلى الإصدار 2.0",
-      recipients: 1247,
-      sent: true,
-      date: "2025-01-25",
-    },
-    { id: 2, title: "عرض خاص", message: "خصم 20% على جميع الشحنات", recipients: 856, sent: true, date: "2025-01-24" },
-    {
-      id: 3,
-      title: "صيانة مجدولة",
-      message: "صيانة النظام يوم الجمعة",
-      recipients: 1247,
-      sent: false,
-      date: "2025-01-27",
-    },
-    {
-      id: 4,
-      title: "ميزة جديدة",
-      message: "تم إضافة ميزة التتبع المباشر",
-      recipients: 1247,
-      sent: true,
-      date: "2025-01-23",
-    },
-  ]
+  useEffect(() => {
+    fetchNotifications()
+  }, [selectedPeriod, selectedReport, customDateFrom, customDateTo, searchTerm])
+
+  const fetchNotifications = async () => {
+    try {
+      setLoading(true)
+      setError(null)
+
+      // Build date range
+      const now = new Date()
+      let startDate: string | undefined
+      let endDate: string | undefined
+      const toISO = (d: Date) => new Date(d).toISOString()
+      switch (selectedPeriod) {
+        case "day": {
+          const start = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+          startDate = toISO(start)
+          endDate = toISO(now)
+          break
+        }
+        case "week": {
+          const start = new Date(now)
+          start.setDate(now.getDate() - 7)
+          startDate = toISO(start)
+          endDate = toISO(now)
+          break
+        }
+        case "year": {
+          const start = new Date(now.getFullYear(), 0, 1)
+          startDate = toISO(start)
+          endDate = toISO(now)
+          break
+        }
+        case "custom": {
+          if (customDateFrom) startDate = new Date(customDateFrom).toISOString()
+          if (customDateTo) endDate = new Date(customDateTo).toISOString()
+          break
+        }
+        case "month":
+        default: {
+          const start = new Date(now.getFullYear(), now.getMonth(), 1)
+          startDate = toISO(start)
+          endDate = toISO(now)
+        }
+      }
+
+      const params: Record<string, string> = { page: "1", limit: "50" }
+      if (searchTerm) params.search = searchTerm
+      if (selectedReport && selectedReport !== "all") params.status = selectedReport
+      if (startDate) params.startDate = startDate
+      if (endDate) params.endDate = endDate
+
+      const resp = await adminNotificationsAPI.getAll(params)
+      const list = Array.isArray(resp?.data) ? resp.data : Array.isArray((resp as any)?.result) ? (resp as any).result : []
+      setItems(list)
+    } catch (err: any) {
+      setError(err.message || "فشل في تحميل الإشعارات")
+      setItems([])
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const stats = useMemo(() => {
+    const sentCount = items.filter((n) => Boolean((n as any).readStatus)).length
+    const pendingCount = items.length - sentCount
+    return { total: items.length, sent: sentCount, pending: pendingCount }
+  }, [items])
 
   return (
     <DashboardLayout>
@@ -243,7 +289,7 @@ export default function NotificationsPage() {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-gray-500 mb-2">إجمالي الإشعارات</p>
-                  <p className="text-3xl font-bold text-gray-900">{notifications.length}</p>
+                  <p className="text-3xl font-bold text-gray-900">{stats.total}</p>
                 </div>
                 <div className="w-12 h-12 bg-gradient-to-br from-orange-500 to-red-600 rounded-xl flex items-center justify-center">
                   <Bell className="w-6 h-6 text-white" />
@@ -254,7 +300,7 @@ export default function NotificationsPage() {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-gray-500 mb-2">تم الإرسال</p>
-                  <p className="text-3xl font-bold text-green-600">{notifications.filter((n) => n.sent).length}</p>
+                  <p className="text-3xl font-bold text-green-600">{stats.sent}</p>
                 </div>
                 <div className="w-12 h-12 bg-green-100 rounded-xl flex items-center justify-center">
                   <CheckCircle2 className="w-6 h-6 text-green-600" />
@@ -265,7 +311,7 @@ export default function NotificationsPage() {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-gray-500 mb-2">قيد الانتظار</p>
-                  <p className="text-3xl font-bold text-orange-600">{notifications.filter((n) => !n.sent).length}</p>
+                  <p className="text-3xl font-bold text-orange-600">{stats.pending}</p>
                 </div>
                 <div className="w-12 h-12 bg-orange-100 rounded-xl flex items-center justify-center">
                   <Send className="w-6 h-6 text-orange-600" />
@@ -407,10 +453,22 @@ export default function NotificationsPage() {
           </div>
 
           {/* Notifications List */}
+          {loading ? (
+            <div className="bg-white/90 backdrop-blur-sm rounded-2xl p-6 shadow-lg border border-white/20 text-center">جاري التحميل...</div>
+          ) : error ? (
+            <div className="bg-red-50 border border-red-200 rounded-2xl p-6 text-center">
+              <p className="text-red-600 font-medium">{error}</p>
+              <button onClick={fetchNotifications} className="mt-4 px-6 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors">إعادة المحاولة</button>
+            </div>
+          ) : (
           <div className="space-y-4">
-            {notifications.map((notification) => (
+            {items.map((n: any) => {
+              const sent = Boolean(n.readStatus)
+              const date = n.timestamp ? new Date(n.timestamp).toISOString().slice(0,10) : ""
+              const recipients = typeof n.recipientsCount === 'number' ? n.recipientsCount : (n.customerId ? 1 : 0)
+              return (
               <motion.div
-                key={notification.id}
+                key={n._id}
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 whileHover={{ scale: 1.02 }}
@@ -420,38 +478,38 @@ export default function NotificationsPage() {
                   <div className="flex items-start gap-4 flex-1">
                     <div
                       className={`w-12 h-12 rounded-xl flex items-center justify-center ${
-                        notification.sent ? "bg-green-100" : "bg-orange-100"
+                        sent ? "bg-green-100" : "bg-orange-100"
                       }`}
                     >
-                      {notification.sent ? (
+                      {sent ? (
                         <CheckCircle2 className="w-6 h-6 text-green-600" />
                       ) : (
                         <Send className="w-6 h-6 text-orange-600" />
                       )}
                     </div>
                     <div className="flex-1">
-                      <h3 className="text-xl font-bold text-gray-900 mb-2">{notification.title}</h3>
-                      <p className="text-gray-600 mb-4">{notification.message}</p>
+                      <h3 className="text-xl font-bold text-gray-900 mb-2">{n.title || 'إشعار'}</h3>
+                      <p className="text-gray-600 mb-4">{n.message}</p>
                       <div className="flex items-center gap-6 text-sm text-gray-500">
                         <div className="flex items-center gap-2">
                           <Users className="w-4 h-4" />
-                          <span>{notification.recipients.toLocaleString()} مستلم</span>
+                          <span>{recipients.toLocaleString()} مستلم</span>
                         </div>
                         <div className="flex items-center gap-2">
                           <Bell className="w-4 h-4" />
-                          <span>{notification.date}</span>
+                          <span>{date}</span>
                         </div>
                         <span
                           className={`px-3 py-1 rounded-lg font-medium ${
-                            notification.sent ? "bg-green-100 text-green-700" : "bg-orange-100 text-orange-700"
+                            sent ? "bg-green-100 text-green-700" : "bg-orange-100 text-orange-700"
                           }`}
                         >
-                          {notification.sent ? "تم الإرسال" : "قيد الانتظار"}
+                          {sent ? "تم الإرسال" : "قيد الانتظار"}
                         </span>
                       </div>
                     </div>
                   </div>
-                  {!notification.sent && (
+                  {!sent && (
                     <motion.button
                       whileHover={{ scale: 1.05 }}
                       whileTap={{ scale: 0.95 }}
@@ -463,8 +521,9 @@ export default function NotificationsPage() {
                   )}
                 </div>
               </motion.div>
-            ))}
+            )})}
           </div>
+          )}
         </motion.div>
       </div>
     </DashboardLayout>

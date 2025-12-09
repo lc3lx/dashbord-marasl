@@ -92,12 +92,6 @@ export default function LoginPage() {
             <Button type="submit" className="w-full" disabled={isLoading}>
               {isLoading ? "جاري تسجيل الدخول..." : "تسجيل الدخول"}
             </Button>
-
-            <div className="text-center text-sm text-muted-foreground mt-4 p-3 bg-muted/50 rounded-md">
-              <p className="font-medium mb-1">للتجربة:</p>
-              <p>البريد: أي بريد إلكتروني</p>
-              <p>كلمة المرور: أي كلمة مرور</p>
-            </div>
           </form>
         </CardContent>
       </Card>

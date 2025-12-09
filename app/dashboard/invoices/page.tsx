@@ -6,6 +6,7 @@ import { Receipt, Plus, Search, Download, Eye, DollarSign, Calendar, Filter, Che
 import { motion } from "framer-motion"
 import { Input } from "@/components/ui/input"
 import { testInvoices } from "@/data/test-customers"
+import { adminInvoicesAPI } from "@/lib/api"
 
 interface Invoice {
   _id: string
@@ -61,33 +62,18 @@ export default function InvoicesPage() {
     try {
       setLoading(true)
       setError(null)
-      
-      const params = new URLSearchParams({
+
+      const params: Record<string, string> = {
         period: selectedPeriod,
         reportType: selectedReport,
-      })
-      
+      }
       if (selectedPeriod === 'custom' && customDateFrom && customDateTo) {
-        params.append('dateFrom', customDateFrom)
-        params.append('dateTo', customDateTo)
+        params.dateFrom = customDateFrom
+        params.dateTo = customDateTo
       }
-      
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/invoices?${params}`, {
-        method: 'GET',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-      })
-      
-      if (!response.ok) {
-        console.log('[v0] Using test data from test-customers file')
-        setInvoices(testInvoices)
-        setError(null)
-        return
-      }
-      
-      const data = await response.json()
-      setInvoices(data.invoices || data || [])
+
+      const resp = await adminInvoicesAPI.getAll(params)
+      setInvoices(resp?.invoices || resp?.data?.invoices || (Array.isArray(resp) ? resp : []) )
     } catch (err) {
       console.log('[v0] API endpoint not available, using test data')
       setInvoices(testInvoices)

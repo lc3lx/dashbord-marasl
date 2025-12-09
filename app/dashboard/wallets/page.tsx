@@ -27,7 +27,7 @@ import {
 import { motion } from "framer-motion"
 import AdvancedFilterPanel from "@/components/filters/AdvancedFilterPanel"
 import EnhancedPrintButton from "@/components/print/EnhancedPrintButton11"
-import { adminWalletsAPI, usersAPI, transactionsAPI } from "@/lib/api"
+import { adminWalletsAPI, walletsAPI, usersAPI, transactionsAPI } from "@/lib/api"
 
 interface Transaction {
   _id?: string

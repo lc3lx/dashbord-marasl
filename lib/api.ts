@@ -273,6 +273,7 @@ export const dashboardAPI = {
     return apiClient.get("/api/admin/stats")
   },
   getUsers: (params?: any) => apiClient.get("/api/admin/users", params),
+  getCarrierStats: (params?: any) => apiClient.get("/api/admin/carriers/stats", params),
 }
 
 export const usersAPI = {
@@ -309,6 +310,22 @@ export const adminShipmentsAPI = {
     apiClient.patch(`/api/admin/shipments/${id}/status`, { status }),
 }
 
+export const adminInvoicesAPI = {
+  getAll: (params?: any) => apiClient.get("/api/admin/invoices", params),
+}
+
+export const adminOrdersAPI = {
+  getAll: (params?: any) => apiClient.get("/api/admin/orders", params),
+}
+
+export const adminPlatformsAPI = {
+  getAll: (params?: any) => apiClient.get("/api/admin/platforms", params),
+  updateSettings: (id: string, data: any) =>
+    apiClient.put(`/api/admin/platforms/${id}/settings`, data),
+  disconnect: (id: string) => apiClient.post(`/api/admin/platforms/${id}/disconnect`, {}),
+  syncAll: () => apiClient.post("/api/admin/platforms/sync-all", {}),
+}
+
 export const adminWalletsAPI = {
   getPendingTransfers: (params?: any) => apiClient.get("/api/admin/wallets/pending-transfers", params),
   getTransfers: (params?: any) => apiClient.get("/api/admin/wallets/transfers", params),
@@ -337,15 +354,24 @@ export const announcementsAPI = {
   getAll: (params?: any) => apiClient.get("/api/announcements", params),
   getById: (id: string) => apiClient.get(`/api/announcements/${id}`),
   create: (data: any) => apiClient.post("/api/announcements", data),
-  update: (id: string, data: any) => apiClient.post(`/api/announcements/${id}`, data),
-  delete: (id: string) => apiClient.post(`/api/announcements/${id}`, {}),
+  update: (id: string, data: any) => apiClient.put(`/api/announcements/${id}`, data),
+  delete: (id: string) => apiClient.delete(`/api/announcements/${id}`),
+  toggle: (id: string) => apiClient.patch(`/api/announcements/${id}/toggle`, {}),
+  sendEmails: (id: string, data: { all?: boolean; recipientIds?: string[]; recipients?: string[] }) =>
+    apiClient.post(`/api/announcements/${id}/send`, data),
 }
 
 export const notificationsAPI = {
-  getAll: (params?: any) => apiClient.get("/api/notifications", params),
-  markAsRead: (id: string) => apiClient.post(`/api/notifications/${id}/read`, {}),
-  markAllAsRead: () => apiClient.post("/api/notifications/read-all", {}),
-  delete: (id: string) => apiClient.post(`/api/notifications/${id}`, {}),
+  getMy: (params?: any) => apiClient.get("/api/notifications/getMynotification", params),
+  markAsRead: (id: string) => apiClient.put(`/api/notifications/${id}/read`, {}),
+  unreadCount: () => apiClient.get("/api/notifications/unread-count"),
+}
+
+export const adminNotificationsAPI = {
+  getAll: (params?: any) => apiClient.get("/api/notifications/admin/all", params),
+  create: (data: { type: string; message: string; title?: string; customerId?: string }) =>
+    apiClient.post("/api/notifications", data),
+  delete: (id: string) => apiClient.delete(`/api/notifications/${id}`),
 }
 
 export const couponsAPI = {

@@ -5,7 +5,7 @@ import DashboardLayout from "@/components/dashboard/DashboardLayout"
 import { Truck, Search, TrendingUp, Package, Clock, DollarSign, Calendar, Filter } from 'lucide-react'
 import { motion } from "framer-motion"
 import { Input } from "@/components/ui/input"
-import { shippingCompaniesAPI } from "@/lib/api"
+import { dashboardAPI } from "@/lib/api"
 
 export default function CarriersPage() {
   const [searchTerm, setSearchTerm] = useState("")
@@ -19,51 +19,83 @@ export default function CarriersPage() {
 
   useEffect(() => {
     fetchCarriersData()
-  }, [])
+  }, [selectedPeriod, selectedReport, customDateFrom, customDateTo])
 
   const fetchCarriersData = async () => {
     try {
       setLoading(true)
       setError(null)
 
-      const companiesResponse = await shippingCompaniesAPI.getAll()
-
-      let companies = []
-      if (Array.isArray(companiesResponse)) {
-        companies = companiesResponse
-      } else if (companiesResponse.result && Array.isArray(companiesResponse.result)) {
-        companies = companiesResponse.result
-      } else if (companiesResponse.data && Array.isArray(companiesResponse.data)) {
-        companies = companiesResponse.data
+      // build optional date filters
+      const now = new Date()
+      let startDate: string | undefined
+      let endDate: string | undefined
+      const toISO = (d: Date) => new Date(d).toISOString()
+      switch (selectedPeriod) {
+        case "day": {
+          const start = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+          startDate = toISO(start)
+          endDate = toISO(now)
+          break
+        }
+        case "week": {
+          const start = new Date(now)
+          start.setDate(now.getDate() - 7)
+          startDate = toISO(start)
+          endDate = toISO(now)
+          break
+        }
+        case "year": {
+          const start = new Date(now.getFullYear(), 0, 1)
+          startDate = toISO(start)
+          endDate = toISO(now)
+          break
+        }
+        case "custom": {
+          if (customDateFrom) startDate = new Date(customDateFrom).toISOString()
+          if (customDateTo) endDate = new Date(customDateTo).toISOString()
+          break
+        }
+        case "month":
+        default: {
+          const start = new Date(now.getFullYear(), now.getMonth(), 1)
+          startDate = toISO(start)
+          endDate = toISO(now)
+        }
       }
 
-      const carriersWithStats = companies.map((company: any) => {
-        // نسبة عشوائية واقعية للتوصيل في الوقت المحدد (بين 75% و 98%)
-        const onTimePercentage = Math.floor(Math.random() * (98 - 75 + 1)) + 75
+      const params: Record<string, string> = {}
+      if (startDate) params.startDate = startDate
+      if (endDate) params.endDate = endDate
 
-        // عدد شحنات عشوائي واقعي (بين 50 و 500)
-        const shipmentCount = Math.floor(Math.random() * (500 - 50 + 1)) + 50
+      const statsResp = await dashboardAPI.getCarrierStats(params)
+      const byCarrier = statsResp?.data?.byCarrier || statsResp?.byCarrier || []
 
-        // متوسط تكلفة عشوائي واقعي (بين 25 و 80 ريال)
-        const avgCost = Math.floor(Math.random() * (80 - 25 + 1)) + 25
+      const carriersWithStats = byCarrier.map((c: any) => {
+        const total = Number(c?.totals?.total || 0)
+        const delivered = Number(c?.totals?.delivered || 0)
+        const onTime = total > 0 ? Math.round((delivered / total) * 100) : 0
+        const totalRevenue = Number(c?.financials?.totalRevenue || 0)
+        const payableToCarrier = Number(c?.financials?.payableToCarrier || 0)
+        const avgCost = total > 0 ? Math.round((payableToCarrier / total) * 100) / 100 : 0
 
-        // تحديد الأداء بناءً على نسبة التوصيل في الوقت
         let performance = "ممتاز"
-        if (onTimePercentage < 80) performance = "ضعيف"
-        else if (onTimePercentage < 88) performance = "جيد"
-        else if (onTimePercentage < 95) performance = "ممتاز"
+        if (onTime < 80) performance = "ضعيف"
+        else if (onTime < 88) performance = "جيد"
+        else if (onTime < 95) performance = "ممتاز"
         else performance = "استثنائي"
 
+        // تقدير تقييم مبني على نسبة الإنجاز، بدون عشوائية
+        const rating = Math.max(0, Math.min(5, Number((3 + onTime / 50).toFixed(1))))
+
         return {
-          id: company._id,
-          name: company.company || company.name || "شركة شحن",
-          shipments: shipmentCount,
-          onTime: onTimePercentage,
-          avgCost: avgCost,
-          rating: company.rating || 4.5,
+          id: c.company,
+          name: c.company,
+          shipments: total,
+          onTime,
+          avgCost,
+          rating,
           performance,
-          phone: company.phone,
-          email: company.email,
         }
       })
 
@@ -204,6 +236,7 @@ export default function CarriersPage() {
                     </button>
                     <button
                       disabled={!customDateFrom || !customDateTo}
+                      onClick={fetchCarriersData}
                       className="px-6 py-2 bg-gradient-to-r from-indigo-500 to-purple-600 text-white rounded-lg hover:shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       تطبيق

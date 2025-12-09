@@ -6,7 +6,7 @@ import { Package, Plus, Search, Clock, CheckCircle2, XCircle, DollarSign } from 
 import { motion } from "framer-motion"
 import AdvancedFilterPanel from "@/components/filters/AdvancedFilterPanel"
 import EnhancedPrintButton from "@/components/print/EnhancedPrintButton11"
-import { ordersAPI } from "@/lib/api"
+import { adminOrdersAPI } from "@/lib/api"
 
 export default function OrdersPage() {
   const [searchTerm, setSearchTerm] = useState("")
@@ -20,12 +20,16 @@ export default function OrdersPage() {
       try {
         setLoading(true)
         setError(null)
-        const response = await ordersAPI.getAll()
+        const params: Record<string, string> = {}
+        if (filters.status) params.status = filters.status
+        if (filters.dateFrom) params.startDate = new Date(filters.dateFrom).toISOString()
+        if (filters.dateTo) params.endDate = new Date(filters.dateTo).toISOString()
+        const response = await adminOrdersAPI.getAll(params)
 
-        // Handle different response structures
-        let ordersData = []
-        if (response?.success && response?.data) {
-          ordersData = Array.isArray(response.data) ? response.data : []
+        // Handle backend { success, data, pagination }
+        let ordersData: any[] = []
+        if (response?.success && Array.isArray(response?.data)) {
+          ordersData = response.data
         } else if (Array.isArray(response?.data)) {
           ordersData = response.data
         } else if (Array.isArray(response)) {
@@ -42,7 +46,7 @@ export default function OrdersPage() {
     }
 
     fetchOrders()
-  }, [])
+  }, [filters.status, filters.dateFrom, filters.dateTo])
 
   const getStatusInfo = (status: string) => {
     switch (status) {

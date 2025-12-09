@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useRef } from "react"
+import { useState, useRef, useEffect, useMemo } from "react"
 import DashboardLayout from "@/components/dashboard/DashboardLayout"
 import {
   Megaphone,
@@ -21,6 +21,7 @@ import {
 } from "lucide-react"
 import { motion, AnimatePresence } from "framer-motion"
 import { Input } from "@/components/ui/input"
+import { announcementsAPI, usersAPI } from "@/lib/api"
 
 export default function AnnouncementsPage() {
   const [searchTerm, setSearchTerm] = useState("")
@@ -28,6 +29,9 @@ export default function AnnouncementsPage() {
   const [selectedReport, setSelectedReport] = useState("all")
   const [customDateFrom, setCustomDateFrom] = useState("")
   const [customDateTo, setCustomDateTo] = useState("")
+  const [items, setItems] = useState<any[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
 
   const [isAddModalOpen, setIsAddModalOpen] = useState(false)
   const [isEditModalOpen, setIsEditModalOpen] = useState(false)
@@ -43,12 +47,48 @@ export default function AnnouncementsPage() {
     endDate: "",
     noEndDate: false,
   })
+  const [sendToAll, setSendToAll] = useState(false)
+  const [recipientEmails, setRecipientEmails] = useState("")
+  const [recipientSearch, setRecipientSearch] = useState("")
+  const [recipientResults, setRecipientResults] = useState<any[]>([])
+  const [selectedRecipientIds, setSelectedRecipientIds] = useState<string[]>([])
 
   const [textColor, setTextColor] = useState("#000000")
   const [bgColor, setBgColor] = useState("#ffffff")
   const [fontSize, setFontSize] = useState("16px")
   const [fontFamily, setFontFamily] = useState("Cairo")
   const contentEditableRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    fetchAnnouncements()
+  }, [selectedPeriod, selectedReport, customDateFrom, customDateTo])
+
+  const fetchAnnouncements = async () => {
+    try {
+      setLoading(true)
+      setError(null)
+      const resp = await announcementsAPI.getAll()
+      const list = Array.isArray(resp) ? resp : Array.isArray((resp as any)?.data) ? (resp as any).data : []
+      setItems(list)
+    } catch (e: any) {
+      setItems([])
+      setError(e?.message || "فشل في تحميل الإعلانات")
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const searchRecipients = async () => {
+    try {
+      const params: any = { page: "1", limit: "10" }
+      if (recipientSearch) params.search = recipientSearch
+      const resp = await usersAPI.getAll(params)
+      const data = (resp as any)?.data || resp || []
+      setRecipientResults(Array.isArray(data) ? data : [])
+    } catch (e) {
+      setRecipientResults([])
+    }
+  }
 
   const periods = [
     { label: "يومي", value: "day" },
@@ -64,38 +104,29 @@ export default function AnnouncementsPage() {
     { label: "غير نشطة", value: "inactive", icon: Megaphone },
   ]
 
-  const announcements = [
-    {
-      id: 1,
-      title: "تحديث سياسة الشحن",
-      content: "تم تحديث سياسة الشحن لتشمل مناطق جديدة",
-      active: true,
-      views: 1523,
-      date: "2025-01-25",
-      startDate: "2025-01-20T10:00",
-      endDate: "2025-02-20T23:59",
-    },
-    {
-      id: 2,
-      title: "عطلة رسمية",
-      content: "سيتم إيقاف الخدمة يوم العيد الوطني",
-      active: true,
-      views: 2341,
-      date: "2025-01-24",
-      startDate: "2025-01-24T08:00",
-      endDate: "2025-01-26T23:59",
-    },
-    {
-      id: 3,
-      title: "ميزة جديدة",
-      content: "تم إضافة ميزة التتبع المباشر للشحنات",
-      active: false,
-      views: 856,
-      date: "2025-01-23",
-      startDate: "2025-01-15T09:00",
-      endDate: "2025-01-23T18:00",
-    },
-  ]
+  const announcements = useMemo(() => {
+    const list = Array.isArray(items) ? items : []
+    // Apply simple client filters
+    const filtered = list.filter((a: any) => {
+      const matchSearch = !searchTerm ||
+        (String(a.title || "").toLowerCase().includes(searchTerm.toLowerCase())) ||
+        (String(a.content || "").toLowerCase().includes(searchTerm.toLowerCase()))
+      const isActive = typeof a.active === 'boolean' ? a.active : Boolean(a.isActive)
+      const matchReport = selectedReport === 'all' ||
+        (selectedReport === 'active' && isActive) ||
+        (selectedReport === 'inactive' && !isActive)
+      // Period filter by createdAt
+      let matchPeriod = true
+      const createdAt = a.createdAt ? new Date(a.createdAt) : null
+      if (selectedPeriod === 'custom' && customDateFrom && customDateTo && createdAt) {
+        const from = new Date(customDateFrom)
+        const to = new Date(customDateTo)
+        matchPeriod = createdAt >= from && createdAt <= to
+      }
+      return matchSearch && matchReport && matchPeriod
+    })
+    return filtered
+  }, [items, searchTerm, selectedReport, selectedPeriod, customDateFrom, customDateTo])
 
   const getDaysRemaining = (endDate: string) => {
     if (!endDate) return null
@@ -111,7 +142,8 @@ export default function AnnouncementsPage() {
     const start = announcement.startDate ? new Date(announcement.startDate) : null
     const end = announcement.endDate ? new Date(announcement.endDate) : null
 
-    if (!announcement.active) {
+    const isActive = typeof announcement.active === 'boolean' ? announcement.active : Boolean(announcement.isActive)
+    if (!isActive) {
       return { text: "غير نشط", color: "gray", bgColor: "bg-gray-100", textColor: "text-gray-700" }
     }
 
@@ -153,29 +185,43 @@ export default function AnnouncementsPage() {
     setIsDeleteModalOpen(true)
   }
 
-  const handleConfirmDelete = () => {
+  const handleConfirmDelete = async () => {
     if (!deletingAnnouncement) return
-
-    console.log("[v0] حذف الإعلان:", deletingAnnouncement)
-
-    setIsDeleteModalOpen(false)
-    setDeletingAnnouncement(null)
-
-    alert("تم حذف الإعلان بنجاح!")
+    try {
+      await announcementsAPI.delete(deletingAnnouncement._id || deletingAnnouncement.id)
+      await fetchAnnouncements()
+      setIsDeleteModalOpen(false)
+      setDeletingAnnouncement(null)
+      alert("تم حذف الإعلان بنجاح!")
+    } catch (e: any) {
+      alert(e?.message || "فشل حذف الإعلان")
+    }
   }
 
-  const handleUpdateAnnouncement = () => {
+  const handleUpdateAnnouncement = async () => {
     if (!editingAnnouncement.title || !editingAnnouncement.content) {
       alert("الرجاء ملء جميع الحقول المطلوبة")
       return
     }
-
-    console.log("[v0] تحديث الإعلان:", editingAnnouncement)
-
-    setIsEditModalOpen(false)
-    setEditingAnnouncement(null)
-
-    alert("تم تحديث الإعلان بنجاح!")
+    try {
+      const payload: any = {
+        title: editingAnnouncement.title,
+        content: editingAnnouncement.content,
+        isActive: typeof editingAnnouncement.active === 'boolean' ? editingAnnouncement.active : editingAnnouncement.isActive,
+        backgroundColor: bgColor,
+        textColor: textColor,
+        // accept raw values; backend will validate
+        startDate: editingAnnouncement.startDate || null,
+        endDate: editingAnnouncement.noEndDate ? null : (editingAnnouncement.endDate || null),
+      }
+      await announcementsAPI.update(editingAnnouncement._id || editingAnnouncement.id, payload)
+      await fetchAnnouncements()
+      setIsEditModalOpen(false)
+      setEditingAnnouncement(null)
+      alert("تم تحديث الإعلان بنجاح!")
+    } catch (e: any) {
+      alert(e?.message || "فشل تحديث الإعلان")
+    }
   }
 
   const handleContentChange = () => {
@@ -188,25 +234,36 @@ export default function AnnouncementsPage() {
     }
   }
 
-  const handleAddAnnouncement = () => {
+  const handleAddAnnouncement = async () => {
     if (!newAnnouncement.title || !newAnnouncement.content) {
       alert("الرجاء ملء جميع الحقول المطلوبة")
       return
     }
-
-    console.log("[v0] إضافة إعلان جديد:", newAnnouncement)
-
-    setIsAddModalOpen(false)
-    setNewAnnouncement({
-      title: "",
-      content: "",
-      active: true,
-      startDate: "",
-      endDate: "",
-      noEndDate: false,
-    })
-
-    alert("تم إضافة الإعلان بنجاح!")
+    try {
+      const payload: any = {
+        title: newAnnouncement.title,
+        content: newAnnouncement.content,
+        isActive: newAnnouncement.active,
+        backgroundColor: bgColor,
+        textColor: textColor,
+        startDate: newAnnouncement.startDate || null,
+        endDate: newAnnouncement.noEndDate ? null : (newAnnouncement.endDate || null),
+      }
+      const created = await announcementsAPI.create(payload)
+      const annId = (created && (created._id || created.id)) || null
+      if (annId && (sendToAll || (recipientEmails || "").trim() !== "" || selectedRecipientIds.length)) {
+        const emails = (recipientEmails || "").split(',').map(e => e.trim()).filter(Boolean)
+        await announcementsAPI.sendEmails(annId, { all: sendToAll, recipients: emails, recipientIds: selectedRecipientIds })
+      }
+      await fetchAnnouncements()
+      setIsAddModalOpen(false)
+      setNewAnnouncement({ title: "", content: "", active: true, startDate: "", endDate: "", noEndDate: false })
+      setSendToAll(false)
+      setRecipientEmails("")
+      alert("تم إضافة الإعلان بنجاح!")
+    } catch (e: any) {
+      alert(e?.message || "فشل إضافة الإعلان")
+    }
   }
 
   return (
@@ -254,7 +311,7 @@ export default function AnnouncementsPage() {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-gray-500 mb-2">نشطة</p>
-                  <p className="text-3xl font-bold text-green-600">{announcements.filter((a) => a.active).length}</p>
+                  <p className="text-3xl font-bold text-green-600">{announcements.filter((a: any) => (typeof a.active === 'boolean' ? a.active : Boolean(a.isActive))).length}</p>
                 </div>
                 <div className="w-12 h-12 bg-green-100 rounded-xl flex items-center justify-center">
                   <Megaphone className="w-6 h-6 text-green-600" />
@@ -265,9 +322,7 @@ export default function AnnouncementsPage() {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-gray-500 mb-2">إجمالي المشاهدات</p>
-                  <p className="text-3xl font-bold text-violet-600">
-                    {announcements.reduce((sum, a) => sum + a.views, 0).toLocaleString()}
-                  </p>
+                  <p className="text-3xl font-bold text-violet-600">{announcements.reduce((sum: number, a: any) => sum + (Number(a.views) || 0), 0).toLocaleString()}</p>
                 </div>
                 <div className="w-12 h-12 bg-violet-100 rounded-xl flex items-center justify-center">
                   <Eye className="w-6 h-6 text-violet-600" />
@@ -410,13 +465,13 @@ export default function AnnouncementsPage() {
 
           {/* Announcements List */}
           <div className="space-y-4">
-            {announcements.map((announcement) => {
+            {announcements.map((announcement: any) => {
               const status = getAnnouncementStatus(announcement)
               const daysRemaining = getDaysRemaining(announcement.endDate)
 
               return (
                 <motion.div
-                  key={announcement.id}
+                  key={announcement._id || announcement.id}
                   initial={{ opacity: 0, y: 20 }}
                   animate={{ opacity: 1, y: 0 }}
                   whileHover={{ scale: 1.02 }}
@@ -485,9 +540,9 @@ export default function AnnouncementsPage() {
                         <div className="flex items-center gap-6 text-sm text-gray-500">
                           <div className="flex items-center gap-2">
                             <Eye className="w-4 h-4" />
-                            <span>{announcement.views.toLocaleString()} مشاهدة</span>
+                            <span>{(Number(announcement.views) || 0).toLocaleString()} مشاهدة</span>
                           </div>
-                          <span>نُشر في {announcement.date}</span>
+                          <span>نُشر في {announcement.createdAt ? new Date(announcement.createdAt).toLocaleDateString('ar-SA') : ''}</span>
                         </div>
                       </div>
                     </div>
@@ -767,6 +822,81 @@ export default function AnnouncementsPage() {
                       <span className="text-sm font-medium text-gray-700">تفعيل الإعلان فوراً</span>
                     </label>
                     <p className="text-sm text-gray-500 mr-8 mt-1">إذا تم التفعيل، سيظهر الإعلان للمستخدمين مباشرة</p>
+                  </div>
+
+                  {/* Recipients */}
+                  <div className="space-y-3 p-4 bg-gradient-to-r from-violet-50 to-purple-50 rounded-xl border border-violet-200">
+                    <div className="flex items-center gap-2 mb-1">
+                      <Megaphone className="w-4 h-4 text-violet-600" />
+                      <h3 className="text-sm font-semibold text-gray-900">المستلمون (اختياري لإرسال بريد)</h3>
+                    </div>
+                    <label className="flex items-center gap-3 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={sendToAll}
+                        onChange={(e) => setSendToAll(e.target.checked)}
+                        className="w-5 h-5 text-violet-600 border-gray-300 rounded focus:ring-violet-500"
+                      />
+                      <span className="text-sm font-medium text-gray-700">إرسال إلى جميع المستخدمين</span>
+                    </label>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">عناوين بريد (مفصولة بفواصل)</label>
+                      <input
+                        type="text"
+                        value={recipientEmails}
+                        onChange={(e) => setRecipientEmails(e.target.value)}
+                        placeholder="user1@example.com, user2@example.com"
+                        className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-violet-500"
+                      />
+                      <p className="text-xs text-gray-500 mt-1">اترك الحقل فارغاً إذا لا ترغب بإرسال بريد الآن</p>
+                    </div>
+                    <div className="space-y-2">
+                      <label className="block text-sm font-medium text-gray-700">بحث عن مستخدمين لإرسال بريد</label>
+                      <div className="flex gap-2">
+                        <input
+                          type="text"
+                          value={recipientSearch}
+                          onChange={(e) => setRecipientSearch(e.target.value)}
+                          placeholder="الاسم أو البريد"
+                          className="flex-1 px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-violet-500"
+                        />
+                        <button
+                          type="button"
+                          onClick={searchRecipients}
+                          className="px-4 py-2 bg-violet-600 text-white rounded-xl hover:bg-violet-700"
+                        >بحث</button>
+                      </div>
+                      {recipientResults.length > 0 && (
+                        <div className="max-h-40 overflow-auto border border-violet-200 rounded-lg p-2 bg-white">
+                          {recipientResults.map((u: any) => {
+                            const id = u._id || u.id
+                            const checked = selectedRecipientIds.includes(id)
+                            return (
+                              <label key={id} className="flex items-center justify-between py-1 px-2 hover:bg-violet-50 rounded">
+                                <div className="flex items-center gap-2">
+                                  <input
+                                    type="checkbox"
+                                    checked={checked}
+                                    onChange={(e) => {
+                                      setSelectedRecipientIds((prev) => {
+                                        if (e.target.checked) return Array.from(new Set([...prev, id]))
+                                        return prev.filter((x) => x !== id)
+                                      })
+                                    }}
+                                    className="w-4 h-4 text-violet-600"
+                                  />
+                                  <span className="text-sm text-gray-800">{u.firstName} {u.lastName}</span>
+                                </div>
+                                <span className="text-xs text-gray-500">{u.email}</span>
+                              </label>
+                            )
+                          })}
+                        </div>
+                      )}
+                      {selectedRecipientIds.length > 0 && (
+                        <p className="text-xs text-gray-600">تم اختيار {selectedRecipientIds.length} مستخدم(ين)</p>
+                      )}
+                    </div>
                   </div>
                 </div>
 
