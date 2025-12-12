@@ -243,3 +243,30 @@ export function useCreditUserWallet() {
 
   return { credit, isLoading, error }
 }
+
+export function useDebitUserWallet() {
+  const [isLoading, setIsLoading] = useState(false)
+  const [error, setError] = useState<Error | null>(null)
+
+  const debit = async ({ userId, amount, description }: { userId: string; amount: number; description?: string }) => {
+    try {
+      setIsLoading(true)
+      setError(null)
+      const res = await fetch(`${API_BASE_URL}/api/admin/wallets/${userId}/subtract-balance`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ amount, description }),
+      })
+      if (!res.ok) {
+        const txt = await res.text().catch(() => '')
+        throw new Error(txt || 'Failed to debit user wallet')
+      }
+      return await res.json().catch(() => ({}))
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  return { debit, isLoading, error }
+}

@@ -4,21 +4,22 @@ import type React from "react"
 
 import { useState } from "react"
 import { useAuth } from "../providers/AuthProvider"
+import { employeeAuthAPI } from "@/lib/api"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Label } from "@/components/ui/label"
 import { useRouter } from "next/navigation"
-import { LogIn, Mail, Lock, AlertCircle } from "lucide-react"
+import { LogIn, Mail, Lock, AlertCircle, Users } from "lucide-react"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import Link from "next/link"
 
-export default function LoginPage() {
+export default function EmployeeLoginPage() {
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
   const [error, setError] = useState("")
   const [isLoading, setIsLoading] = useState(false)
-  const { login } = useAuth()
+  const { loginEmployee } = useAuth()
   const router = useRouter()
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -27,10 +28,10 @@ export default function LoginPage() {
     setIsLoading(true)
 
     try {
-      await login(email, password)
+      await loginEmployee(email, password)
       router.push("/dashboard")
-    } catch (err) {
-      setError("فشل تسجيل الدخول. يرجى التحقق من البريد الإلكتروني وكلمة المرور.")
+    } catch (err: any) {
+      setError(err.message || "فشل تسجيل الدخول. يرجى التحقق من البريد الإلكتروني وكلمة المرور.")
     } finally {
       setIsLoading(false)
     }
@@ -41,11 +42,11 @@ export default function LoginPage() {
       <Card className="w-full max-w-md shadow-lg">
         <CardHeader className="space-y-1 text-center">
           <div className="flex justify-center mb-4">
-            <div className="h-12 w-12 rounded-full bg-primary/10 flex items-center justify-center">
-              <LogIn className="h-6 w-6 text-primary" />
+            <div className="h-12 w-12 rounded-full bg-blue-100 flex items-center justify-center">
+              <Users className="h-6 w-6 text-blue-600" />
             </div>
           </div>
-          <CardTitle className="text-2xl font-bold">تسجيل الدخول</CardTitle>
+          <CardTitle className="text-2xl font-bold">تسجيل دخول الموظفين</CardTitle>
           <CardDescription>أدخل بريدك الإلكتروني وكلمة المرور للوصول إلى لوحة التحكم</CardDescription>
         </CardHeader>
         <CardContent>
@@ -64,7 +65,7 @@ export default function LoginPage() {
                 <Input
                   id="email"
                   type="email"
-                  placeholder="admin@example.com"
+                  placeholder="employee@example.com"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   required
@@ -97,10 +98,10 @@ export default function LoginPage() {
 
           <div className="mt-6 text-center">
             <Link
-              href="/employee-login"
-              className="text-sm text-blue-600 hover:text-blue-800 transition-colors"
+              href="/login"
+              className="text-sm text-muted-foreground hover:text-primary transition-colors"
             >
-              تسجيل دخول الموظفين →
+              تسجيل دخول الإدارة ←
             </Link>
           </div>
         </CardContent>

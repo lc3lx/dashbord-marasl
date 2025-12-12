@@ -268,6 +268,10 @@ export const authAPI = {
   logout: () => apiClient.post("/api/auth/logout", {}),
 }
 
+export const employeeAuthAPI = {
+  login: (email: string, password: string) => apiClient.post("/api/auth/employee-login", { email, password }),
+}
+
 export const dashboardAPI = {
   getStats: async () => {
     return apiClient.get("/api/admin/stats")

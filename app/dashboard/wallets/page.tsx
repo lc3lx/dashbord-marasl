@@ -42,6 +42,7 @@ interface Transaction {
   description?: string;
   createdAt: string;
   balance?: number;
+  moyasarPaymentId?: string;
 }
 
 interface WalletWithCustomer {
@@ -1410,6 +1411,9 @@ export default function WalletsPage() {
                             الرصيد بعد المعاملة
                           </th>
                           <th className="px-6 py-4 text-right text-sm font-semibold">
+                            معرف الدفع (ميسر)
+                          </th>
+                          <th className="px-6 py-4 text-right text-sm font-semibold">
                             التاريخ
                           </th>
                         </tr>
@@ -1511,6 +1515,19 @@ export default function WalletsPage() {
                                     ? `${transaction.balance.toLocaleString()} ر.س`
                                     : "-"}
                                 </span>
+                              </td>
+                              <td className="px-6 py-4">
+                                <div className="flex items-center gap-2 text-gray-600">
+                                  {transaction.moyasarPaymentId ? (
+                                    <span className="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded font-mono">
+                                      {transaction.moyasarPaymentId}
+                                    </span>
+                                  ) : (
+                                    <span className="text-gray-400 text-xs">
+                                      غير متوفر
+                                    </span>
+                                  )}
+                                </div>
                               </td>
                               <td className="px-6 py-4">
                                 <div className="flex items-center gap-2 text-gray-600">

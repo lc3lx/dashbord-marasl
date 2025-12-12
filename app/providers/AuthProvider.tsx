@@ -11,12 +11,16 @@ interface User {
   lastName: string
   email: string
   role: string
+  userType?: "admin" | "employee"
+  department?: string
+  permissions?: string[]
 }
 
 interface AuthContextType {
   user: User | null
   isAuthenticated: boolean
   login: (email: string, password: string) => Promise<void>
+  loginEmployee: (email: string, password: string) => Promise<void>
   logout: () => void
   loading: boolean
 }
@@ -71,12 +75,47 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         lastName: userData.lastName || userData.name?.split(" ").slice(1).join(" ") || "",
         email: userData.email,
         role: userData.role || "user",
+        userType: "admin",
+        department: userData.department,
+        permissions: userData.permissions || [],
       }
 
       localStorage.setItem("user", JSON.stringify(formattedUser))
 
       setUser(formattedUser)
       initializeSocket(formattedUser.id)
+      router.push("/dashboard")
+    } catch (error: any) {
+      throw error
+    }
+  }
+
+  const loginEmployee = async (email: string, password: string) => {
+    try {
+      const data = await employeeAuthAPI.login(email, password)
+
+      if (!data || !data.token) {
+        throw new Error(data?.message || "فشل تسجيل الدخول")
+      }
+
+      const { token, data: userData } = data
+
+      localStorage.setItem("authToken", token)
+
+      const formattedUser: User = {
+        id: userData._id || userData.id,
+        firstName: userData.name?.split(" ")[0] || "الموظف",
+        lastName: userData.name?.split(" ").slice(1).join(" ") || "",
+        email: userData.email,
+        role: "employee",
+        userType: "employee",
+        department: userData.department,
+        permissions: userData.permissions || [],
+      }
+
+      localStorage.setItem("user", JSON.stringify(formattedUser))
+
+      setUser(formattedUser)
       router.push("/dashboard")
     } catch (error: any) {
       throw error
@@ -98,6 +137,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         user,
         isAuthenticated: !!user,
         login,
+        loginEmployee,
         logout,
         loading,
       }}
