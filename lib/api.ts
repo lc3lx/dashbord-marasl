@@ -376,18 +376,6 @@ export const transactionsAPI = {
   reject: (id: string) => apiClient.post(`/api/transactions/${id}/reject`, {}),
 }
 
-export const moyasarPaymentsAPI = {
-  getAll: (params?: {
-    page?: number;
-    limit?: number;
-    status?: string;
-    customerId?: string;
-    dateFrom?: string;
-    dateTo?: string;
-  }) => apiClient.get("/api/admin/moyasar-payments", params),
-  getById: (paymentId: string) => apiClient.get(`/api/admin/moyasar-payments/${paymentId}`),
-}
-
 export const announcementsAPI = {
   getAll: (params?: any) => apiClient.get("/api/announcements", params),
   getById: (id: string) => apiClient.get(`/api/announcements/${id}`),
