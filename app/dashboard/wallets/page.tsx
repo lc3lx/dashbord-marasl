@@ -1,7 +1,7 @@
-"use client"
+"use client";
 
-import { useState, useEffect, useCallback, useMemo } from "react"
-import DashboardLayout from "@/components/dashboard/DashboardLayout"
+import { useState, useEffect, useCallback, useMemo } from "react";
+import DashboardLayout from "@/components/dashboard/DashboardLayout";
 import {
   Wallet,
   RefreshCw,
@@ -23,63 +23,115 @@ import {
   ChevronRight,
   Loader2,
   Plus,
-} from "lucide-react"
-import { motion } from "framer-motion"
-import AdvancedFilterPanel from "@/components/filters/AdvancedFilterPanel"
-import EnhancedPrintButton from "@/components/print/EnhancedPrintButton11"
-import { adminWalletsAPI, walletsAPI, usersAPI, transactionsAPI } from "@/lib/api"
+  CreditCard,
+} from "lucide-react";
+import { motion } from "framer-motion";
+import AdvancedFilterPanel from "@/components/filters/AdvancedFilterPanel";
+import EnhancedPrintButton from "@/components/print/EnhancedPrintButton11";
+import {
+  adminWalletsAPI,
+  walletsAPI,
+  usersAPI,
+  transactionsAPI,
+  moyasarPaymentsAPI,
+} from "@/lib/api";
 
 interface Transaction {
-  _id?: string
-  id?: string
-  type: string
-  amount: number
-  description?: string
-  createdAt: string
-  balance?: number
+  _id?: string;
+  id?: string;
+  type: string;
+  amount: number;
+  description?: string;
+  createdAt: string;
+  balance?: number;
 }
 
 interface WalletWithCustomer {
-  _id?: string
-  id?: string
-  customerId: string
-  balance: number
-  transactions: Transaction[]
-  createdAt: string
-  updatedAt: string
-  customerName?: string
-  customerEmail?: string
+  _id?: string;
+  id?: string;
+  customerId: string;
+  balance: number;
+  transactions: Transaction[];
+  createdAt: string;
+  updatedAt: string;
+  customerName?: string;
+  customerEmail?: string;
 }
 
 interface TransactionWithCustomer extends Transaction {
-  customerId?: string
-  customerName: string
-  customerEmail: string
-  walletId: string
+  customerId?: string;
+  customerName: string;
+  customerEmail: string;
+  walletId: string;
 }
 
 interface BankTransferRequest {
-  _id: string
-  customerId?: string
-  customerName: string
-  customerEmail: string
-  customerPhone?: string
-  amount: number
-  status: string
-  createdAt: string
-  notes?: string
-  bankReceipt?: string
-  bankName?: string
-  accountNumber?: string
-  accountHolder?: string
+  _id: string;
+  customerId?: string;
+  customerName: string;
+  customerEmail: string;
+  customerPhone?: string;
+  amount: number;
+  status: string;
+  createdAt: string;
+  notes?: string;
+  bankReceipt?: string;
+  bankName?: string;
+  accountNumber?: string;
+  accountHolder?: string;
 }
 
 interface TransferStats {
-  pending: number
-  completed: number
-  rejected: number
-  approved: number
-  failed: number
+  pending: number;
+  completed: number;
+  rejected: number;
+  approved: number;
+  failed: number;
+}
+
+interface MoyasarPayment {
+  _id: string;
+  moyasarPaymentId: string;
+  amount: number;
+  status: string;
+  description?: string;
+  customerId: string;
+  customerName: string;
+  customerEmail: string;
+  customerPhone: string;
+  walletId: string;
+  walletBalance: number;
+  createdAt: string;
+  updatedAt: string;
+  moyasarDetails?: {
+    id: string;
+    status: string;
+    amount: number;
+    currency: string;
+    description?: string;
+    source: any;
+    metadata: any;
+    created_at: string;
+    updated_at: string;
+  };
+}
+
+interface MoyasarPaymentsResponse {
+  success: boolean;
+  data: MoyasarPayment[];
+  pagination: {
+    page: number;
+    limit: number;
+    total: number;
+    pages: number;
+    hasNext: boolean;
+    hasPrev: boolean;
+  };
+  summary: {
+    totalAmount: number;
+    totalTransactions: number;
+    statusCounts: Array<{ _id: string; count: number }>;
+  };
 }
 
 const DEFAULT_TRANSFER_STATS: TransferStats = {
@@ -88,45 +140,89 @@ const DEFAULT_TRANSFER_STATS: TransferStats = {
   rejected: 0,
   approved: 0,
   failed: 0,
-}
+};
 
 export default function WalletsPage() {
-  const [searchTerm, setSearchTerm] = useState("")
-  const [filters, setFilters] = useState<Record<string, string>>({})
-  const [wallets, setWallets] = useState<WalletWithCustomer[]>([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
-  const [allTransactions, setAllTransactions] = useState<TransactionWithCustomer[]>([])
-  const [showTransactions, setShowTransactions] = useState(false)
-  const [bankTransferRequests, setBankTransferRequests] = useState<BankTransferRequest[]>([])
-  const [bankTransfersLoading, setBankTransfersLoading] = useState(false)
-  const [bankTransfersError, setBankTransfersError] = useState<string | null>(null)
-  const [transferStats, setTransferStats] = useState<TransferStats>(DEFAULT_TRANSFER_STATS)
-  const [transferStatusFilter, setTransferStatusFilter] = useState<"all" | "pending" | "completed" | "rejected" | "approved">("pending")
-  const [transferPage, setTransferPage] = useState(1)
-  const [transferPerPage, setTransferPerPage] = useState(10)
+  const [searchTerm, setSearchTerm] = useState("");
+  const [filters, setFilters] = useState<Record<string, string>>({});
+  const [wallets, setWallets] = useState<WalletWithCustomer[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [allTransactions, setAllTransactions] = useState<
+    TransactionWithCustomer[]
+  >([]);
+  const [showTransactions, setShowTransactions] = useState(false);
+  const [bankTransferRequests, setBankTransferRequests] = useState<
+    BankTransferRequest[]
+  >([]);
+  const [bankTransfersLoading, setBankTransfersLoading] = useState(false);
+  const [bankTransfersError, setBankTransfersError] = useState<string | null>(
+    null
+  );
+  const [transferStats, setTransferStats] = useState<TransferStats>(
+    DEFAULT_TRANSFER_STATS
+  );
+  const [transferStatusFilter, setTransferStatusFilter] = useState<
+    "all" | "pending" | "completed" | "rejected" | "approved"
+  >("pending");
+  const [transferPage, setTransferPage] = useState(1);
+  const [transferPerPage, setTransferPerPage] = useState(10);
   const [transfersPagination, setTransfersPagination] = useState({
     total: 0,
     page: 1,
     pages: 1,
     limit: 10,
-  })
-  const [transferActionLoading, setTransferActionLoading] = useState<string | null>(null)
-  const [pendingPreview, setPendingPreview] = useState<BankTransferRequest[]>([])
-  const [pendingPreviewLoading, setPendingPreviewLoading] = useState(false)
-  const [pendingPreviewError, setPendingPreviewError] = useState<string | null>(null)
-  const [detailsOpen, setDetailsOpen] = useState(false)
-  const [selectedTransfer, setSelectedTransfer] = useState<BankTransferRequest | null>(null)
-  const [actionNote, setActionNote] = useState("")
-  const [transactionsUserFilter, setTransactionsUserFilter] = useState<string | null>(null)
-  const [walletDetailsOpen, setWalletDetailsOpen] = useState(false)
-  const [walletDetailsLoading, setWalletDetailsLoading] = useState(false)
-  const [walletDetailsError, setWalletDetailsError] = useState<string | null>(null)
-  const [selectedUserWallet, setSelectedUserWallet] = useState<any>(null)
-  const [currentPage, setCurrentPage] = useState(1)
-  const [itemsPerPage, setItemsPerPage] = useState(10)
-  const [currentTransactionsPage, setCurrentTransactionsPage] = useState(1)
-  const [transactionsPerPage, setTransactionsPerPage] = useState(10)
+  });
+  const [transferActionLoading, setTransferActionLoading] = useState<
+    string | null
+  >(null);
+  const [pendingPreview, setPendingPreview] = useState<BankTransferRequest[]>(
+    []
+  );
+  const [pendingPreviewLoading, setPendingPreviewLoading] = useState(false);
+  const [pendingPreviewError, setPendingPreviewError] = useState<string | null>(
+    null
+  );
+  const [detailsOpen, setDetailsOpen] = useState(false);
+  const [selectedTransfer, setSelectedTransfer] =
+    useState<BankTransferRequest | null>(null);
+  const [actionNote, setActionNote] = useState("");
+  const [transactionsUserFilter, setTransactionsUserFilter] = useState<
+    string | null
+  >(null);
+  const [walletDetailsOpen, setWalletDetailsOpen] = useState(false);
+  const [walletDetailsLoading, setWalletDetailsLoading] = useState(false);
+  const [walletDetailsError, setWalletDetailsError] = useState<string | null>(
+    null
+  );
+  const [selectedUserWallet, setSelectedUserWallet] = useState<any>(null);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage, setItemsPerPage] = useState(10);
+  const [currentTransactionsPage, setCurrentTransactionsPage] = useState(1);
+  const [transactionsPerPage, setTransactionsPerPage] = useState(10);
+  const [moyasarPayments, setMoyasarPayments] = useState<MoyasarPayment[]>([]);
+  const [moyasarPaymentsLoading, setMoyasarPaymentsLoading] = useState(false);
+  const [moyasarPaymentsError, setMoyasarPaymentsError] = useState<
+    string | null
+  >(null);
+  const [showMoyasarPayments, setShowMoyasarPayments] = useState(false);
+  const [moyasarPaymentsPage, setMoyasarPaymentsPage] = useState(1);
+  const [moyasarPaymentsPerPage, setMoyasarPaymentsPerPage] = useState(10);
+  const [moyasarPaymentsPagination, setMoyasarPaymentsPagination] = useState({
+    total: 0,
+    page: 1,
+    pages: 1,
+    limit: 10,
+  });
+  const [moyasarPaymentsSummary, setMoyasarPaymentsSummary] = useState({
+    totalAmount: 0,
+    totalTransactions: 0,
+    statusCounts: [],
+  });
+  const [selectedMoyasarPayment, setSelectedMoyasarPayment] =
+    useState<MoyasarPayment | null>(null);
+  const [moyasarPaymentDetailsOpen, setMoyasarPaymentDetailsOpen] =
+    useState(false);
   const transferStatusOptions = [
     { value: "pending", label: "معلقة" },
     { value: "completed", label: "مكتملة" },
@@ -134,11 +230,13 @@ export default function WalletsPage() {
     { value: "rejected", label: "مرفوضة" },
     { value: "failed", label: "فاشلة" },
     { value: "all", label: "الكل" },
-  ] as const
+  ] as const;
 
   const normalizeTransfer = useCallback((item: any): BankTransferRequest => {
-    const customer = item.customerId
-    const formattedName = `${customer?.firstName || ""}${customer?.lastName ? ` ${customer.lastName}` : ""}`.trim()
+    const customer = item.customerId;
+    const formattedName = `${customer?.firstName || ""}${
+      customer?.lastName ? ` ${customer.lastName}` : ""
+    }`.trim();
 
     return {
       _id: item._id,
@@ -159,246 +257,289 @@ export default function WalletsPage() {
       bankName: item.bankName,
       accountNumber: item.accountNumber,
       accountHolder: item.accountHolder,
-    }
-  }, [])
+    };
+  }, []);
 
   const fetchBankTransfers = useCallback(async () => {
     try {
-      setBankTransfersLoading(true)
-      setBankTransfersError(null)
+      setBankTransfersLoading(true);
+      setBankTransfersError(null);
 
       const response = await adminWalletsAPI.getTransfers({
-        status: transferStatusFilter === "all" ? undefined : transferStatusFilter,
+        status:
+          transferStatusFilter === "all" ? undefined : transferStatusFilter,
         page: transferPage,
         limit: transferPerPage,
-      })
+      });
 
       const rawItems = Array.isArray(response?.data)
         ? response.data
         : Array.isArray(response?.items)
-          ? response.items
-          : Array.isArray(response?.data?.items)
-            ? response.data.items
-            : []
+        ? response.items
+        : Array.isArray(response?.data?.items)
+        ? response.data.items
+        : [];
 
-      const pagination =
-        response?.pagination ||
+      const pagination = response?.pagination ||
         response?.data?.pagination || {
           total: rawItems.length,
           page: transferPage,
           pages: 1,
           limit: transferPerPage,
-        }
+        };
 
       const stats =
         response?.statusCounts ||
         response?.data?.statusCounts ||
-        DEFAULT_TRANSFER_STATS
+        DEFAULT_TRANSFER_STATS;
 
-      const normalizedItems: BankTransferRequest[] = rawItems.map(normalizeTransfer)
+      const normalizedItems: BankTransferRequest[] =
+        rawItems.map(normalizeTransfer);
 
-      setBankTransferRequests(normalizedItems)
+      setBankTransferRequests(normalizedItems);
       setTransfersPagination({
         total: pagination.total || normalizedItems.length,
         page: pagination.page || transferPage,
         pages: pagination.pages || 1,
         limit: pagination.limit || transferPerPage,
-      })
-      setTransferStats(stats)
+      });
+      setTransferStats(stats);
     } catch (err: any) {
-      console.error("خطأ في جلب تحويلات البنوك:", err)
-      setBankTransfersError(err.message || "فشل تحميل طلبات التحويل البنكي")
-      setBankTransferRequests([])
+      console.error("خطأ في جلب تحويلات البنوك:", err);
+      setBankTransfersError(err.message || "فشل تحميل طلبات التحويل البنكي");
+      setBankTransferRequests([]);
       setTransfersPagination({
         total: 0,
         page: 1,
         pages: 1,
         limit: transferPerPage,
-      })
-      setTransferStats(DEFAULT_TRANSFER_STATS)
+      });
+      setTransferStats(DEFAULT_TRANSFER_STATS);
     } finally {
-      setBankTransfersLoading(false)
+      setBankTransfersLoading(false);
     }
-  }, [transferStatusFilter, transferPage, transferPerPage, normalizeTransfer])
+  }, [transferStatusFilter, transferPage, transferPerPage, normalizeTransfer]);
 
   const fetchPendingPreview = useCallback(async () => {
     try {
-      setPendingPreviewLoading(true)
-      setPendingPreviewError(null)
-      const response = await adminWalletsAPI.getPendingTransfers({ page: 1, limit: 5 })
+      setPendingPreviewLoading(true);
+      setPendingPreviewError(null);
+      const response = await adminWalletsAPI.getPendingTransfers({
+        page: 1,
+        limit: 5,
+      });
       const rawItems = Array.isArray(response?.data)
         ? response.data
         : Array.isArray(response?.items)
-          ? response.items
-          : Array.isArray(response?.data?.items)
-            ? response.data.items
-            : []
-      setPendingPreview(rawItems.map(normalizeTransfer))
+        ? response.items
+        : Array.isArray(response?.data?.items)
+        ? response.data.items
+        : [];
+      setPendingPreview(rawItems.map(normalizeTransfer));
     } catch (err: any) {
-      console.error("خطأ في جلب الطلبات المعلقة:", err)
-      setPendingPreview([])
-      setPendingPreviewError(err.message || "فشل تحميل الطلبات المعلقة")
+      console.error("خطأ في جلب الطلبات المعلقة:", err);
+      setPendingPreview([]);
+      setPendingPreviewError(err.message || "فشل تحميل الطلبات المعلقة");
     } finally {
-      setPendingPreviewLoading(false)
+      setPendingPreviewLoading(false);
     }
-  }, [normalizeTransfer])
+  }, [normalizeTransfer]);
 
   useEffect(() => {
-    fetchBankTransfers()
-  }, [fetchBankTransfers])
+    fetchBankTransfers();
+  }, [fetchBankTransfers]);
 
   useEffect(() => {
-    fetchPendingPreview()
-  }, [fetchPendingPreview])
+    fetchPendingPreview();
+  }, [fetchPendingPreview]);
+
+  useEffect(() => {
+    if (showMoyasarPayments) {
+      fetchMoyasarPayments();
+    }
+  }, [showMoyasarPayments, fetchMoyasarPayments]);
   useEffect(() => {
     const fetchWalletsWithCustomers = async () => {
       try {
-        setLoading(true)
-        setError(null)
+        setLoading(true);
+        setError(null);
 
         // 1) جلب المحافظ
-        const walletsResponse = await walletsAPI.getAll()
-        let walletsData: any[] = []
+        const walletsResponse = await walletsAPI.getAll();
+        let walletsData: any[] = [];
         if (walletsResponse?.result && Array.isArray(walletsResponse.result)) {
-          walletsData = walletsResponse.result
+          walletsData = walletsResponse.result;
         } else if (walletsResponse?.success && walletsResponse?.data) {
-          walletsData = Array.isArray(walletsResponse.data) ? walletsResponse.data : []
+          walletsData = Array.isArray(walletsResponse.data)
+            ? walletsResponse.data
+            : [];
         } else if (Array.isArray(walletsResponse?.data)) {
-          walletsData = walletsResponse.data
+          walletsData = walletsResponse.data;
         } else if (Array.isArray(walletsResponse)) {
-          walletsData = walletsResponse as any[]
+          walletsData = walletsResponse as any[];
         }
 
         // 2) جلب المستخدمين (بحد كبير لتغطية كل المحافظ)
-        const usersResponse = await usersAPI.getAll({ page: 1, limit: Math.max(1000, walletsData.length || 1000) })
-        let usersData: any[] = []
+        const usersResponse = await usersAPI.getAll({
+          page: 1,
+          limit: Math.max(1000, walletsData.length || 1000),
+        });
+        let usersData: any[] = [];
         if (usersResponse?.result && Array.isArray(usersResponse.result)) {
-          usersData = usersResponse.result
+          usersData = usersResponse.result;
         } else if (Array.isArray(usersResponse?.data)) {
-          usersData = usersResponse.data
+          usersData = usersResponse.data;
         } else if (Array.isArray(usersResponse)) {
-          usersData = usersResponse as any[]
+          usersData = usersResponse as any[];
         }
 
-        const usersMap = new Map<string, any>()
-        usersData.forEach((u: any) => usersMap.set(String(u._id || u.id), u))
+        const usersMap = new Map<string, any>();
+        usersData.forEach((u: any) => usersMap.set(String(u._id || u.id), u));
 
         // 3) ربط اسم وبريد العميل بكل محفظة
         const walletsWithCustomers = walletsData.map((wallet: any) => {
-          const cid = String(wallet.customerId || "")
-          const customer = usersMap.get(cid)
-          const customerName = [customer?.firstName, customer?.lastName].filter(Boolean).join(" ") || customer?.email || "غير معروف"
-          const customerEmail = customer?.email || "غير متوفر"
-          return { ...wallet, customerName, customerEmail }
-        })
+          const cid = String(wallet.customerId || "");
+          const customer = usersMap.get(cid);
+          const customerName =
+            [customer?.firstName, customer?.lastName]
+              .filter(Boolean)
+              .join(" ") ||
+            customer?.email ||
+            "غير معروف";
+          const customerEmail = customer?.email || "غير متوفر";
+          return { ...wallet, customerName, customerEmail };
+        });
 
         // 4) جلب كل المعاملات من الباك مباشرة
-        const txRes = await transactionsAPI.getAll()
-        let txItems: any[] = []
-        if (Array.isArray((txRes as any)?.data)) txItems = (txRes as any).data
-        else if (Array.isArray(txRes)) txItems = txRes as any[]
+        const txRes = await transactionsAPI.getAll();
+        let txItems: any[] = [];
+        if (Array.isArray((txRes as any)?.data)) txItems = (txRes as any).data;
+        else if (Array.isArray(txRes)) txItems = txRes as any[];
 
-        const transactionsWithCustomers: TransactionWithCustomer[] = txItems.map((t: any) => {
-          const cid = String(t.customerId || t.Customer || t.customer || "")
-          const customer = usersMap.get(cid)
-          const name = [customer?.firstName, customer?.lastName].filter(Boolean).join(" ") || customer?.email || cid
-          const email = customer?.email || "غير متوفر"
-          return {
-            ...t,
-            customerId: cid,
-            customerName: name,
-            customerEmail: email,
-            walletId: String(t.walletId || ""),
-            createdAt: t.createdAt || new Date().toISOString(),
-            amount: Number(t.amount) || 0,
-            type: t.type || "credit",
-          }
-        })
+        const transactionsWithCustomers: TransactionWithCustomer[] =
+          txItems.map((t: any) => {
+            const cid = String(t.customerId || t.Customer || t.customer || "");
+            const customer = usersMap.get(cid);
+            const name =
+              [customer?.firstName, customer?.lastName]
+                .filter(Boolean)
+                .join(" ") ||
+              customer?.email ||
+              cid;
+            const email = customer?.email || "غير متوفر";
+            return {
+              ...t,
+              customerId: cid,
+              customerName: name,
+              customerEmail: email,
+              walletId: String(t.walletId || ""),
+              createdAt: t.createdAt || new Date().toISOString(),
+              amount: Number(t.amount) || 0,
+              type: t.type || "credit",
+            };
+          });
 
-        setWallets(walletsWithCustomers)
+        setWallets(walletsWithCustomers);
         setAllTransactions(
-          transactionsWithCustomers.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()),
-        )
+          transactionsWithCustomers.sort(
+            (a, b) =>
+              new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+          )
+        );
       } catch (err: any) {
-        console.error("خطأ في جلب المحافظ/المعاملات:", err)
-        setError(err.message || "فشل تحميل المحافظ")
-        setAllTransactions([])
+        console.error("خطأ في جلب المحافظ/المعاملات:", err);
+        setError(err.message || "فشل تحميل المحافظ");
+        setAllTransactions([]);
       } finally {
-        setLoading(false)
+        setLoading(false);
       }
-    }
+    };
 
-    fetchWalletsWithCustomers()
-  }, [])
+    fetchWalletsWithCustomers();
+  }, []);
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
         if (detailsOpen) {
-          setDetailsOpen(false)
-          setSelectedTransfer(null)
-          setActionNote("")
+          setDetailsOpen(false);
+          setSelectedTransfer(null);
+          setActionNote("");
         }
         if (walletDetailsOpen) {
-          setWalletDetailsOpen(false)
-          setSelectedUserWallet(null)
+          setWalletDetailsOpen(false);
+          setSelectedUserWallet(null);
         }
       }
-    }
-    window.addEventListener("keydown", onKeyDown)
-    return () => window.removeEventListener("keydown", onKeyDown)
-  }, [detailsOpen, walletDetailsOpen])
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [detailsOpen, walletDetailsOpen]);
 
   const filteredWallets = wallets.filter((wallet) => {
-    const customerId = wallet.customerId || ""
-    const customerName = wallet.customerName || ""
-    const customerEmail = wallet.customerEmail || ""
-    const walletBalance = wallet.balance || 0
-    const walletDate = wallet.createdAt || ""
+    const customerId = wallet.customerId || "";
+    const customerName = wallet.customerName || "";
+    const customerEmail = wallet.customerEmail || "";
+    const walletBalance = wallet.balance || 0;
+    const walletDate = wallet.createdAt || "";
 
     const matchesSearch =
       customerId.includes(searchTerm) ||
       customerName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      customerEmail.toLowerCase().includes(searchTerm.toLowerCase())
+      customerEmail.toLowerCase().includes(searchTerm.toLowerCase());
 
-    const matchesPriceFrom = !filters.priceFrom || walletBalance >= Number(filters.priceFrom)
-    const matchesPriceTo = !filters.priceTo || walletBalance <= Number(filters.priceTo)
-    const matchesDateFrom = !filters.dateFrom || walletDate >= filters.dateFrom
-    const matchesDateTo = !filters.dateTo || walletDate <= filters.dateTo
-    return matchesSearch && matchesPriceFrom && matchesPriceTo && matchesDateFrom && matchesDateTo
-  })
+    const matchesPriceFrom =
+      !filters.priceFrom || walletBalance >= Number(filters.priceFrom);
+    const matchesPriceTo =
+      !filters.priceTo || walletBalance <= Number(filters.priceTo);
+    const matchesDateFrom = !filters.dateFrom || walletDate >= filters.dateFrom;
+    const matchesDateTo = !filters.dateTo || walletDate <= filters.dateTo;
+    return (
+      matchesSearch &&
+      matchesPriceFrom &&
+      matchesPriceTo &&
+      matchesDateFrom &&
+      matchesDateTo
+    );
+  });
 
   const filteredTransactions = allTransactions.filter((transaction) => {
-    const customerName = transaction.customerName || ""
-    const customerEmail = transaction.customerEmail || ""
-    const type = transaction.type || ""
-    const description = transaction.description || ""
+    const customerName = transaction.customerName || "";
+    const customerEmail = transaction.customerEmail || "";
+    const type = transaction.type || "";
+    const description = transaction.description || "";
 
     const matchesSearch =
       customerName.toLowerCase().includes(searchTerm.toLowerCase()) ||
       customerEmail.toLowerCase().includes(searchTerm.toLowerCase()) ||
       type.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      description.toLowerCase().includes(searchTerm.toLowerCase())
+      description.toLowerCase().includes(searchTerm.toLowerCase());
 
-    const matchesUser = !transactionsUserFilter || String(transaction.customerId || "") === String(transactionsUserFilter)
-    return matchesSearch && matchesUser
-  })
+    const matchesUser =
+      !transactionsUserFilter ||
+      String(transaction.customerId || "") === String(transactionsUserFilter);
+    return matchesSearch && matchesUser;
+  });
 
   const txCountByCustomer = useMemo(() => {
-    const m = new Map<string, number>()
+    const m = new Map<string, number>();
     allTransactions.forEach((t: any) => {
-      const cid = String(t.customerId || "")
-      if (!cid) return
-      m.set(cid, (m.get(cid) || 0) + 1)
-    })
-    return m
-  }, [allTransactions])
+      const cid = String(t.customerId || "");
+      if (!cid) return;
+      m.set(cid, (m.get(cid) || 0) + 1);
+    });
+    return m;
+  }, [allTransactions]);
 
-  const totalBalance = filteredWallets.reduce((sum, wallet) => sum + (wallet.balance || 0), 0)
+  const totalBalance = filteredWallets.reduce(
+    (sum, wallet) => sum + (wallet.balance || 0),
+    0
+  );
   const totalTransactions = filteredWallets.reduce(
-    (sum, wallet) => sum + (txCountByCustomer.get(String(wallet.customerId)) || 0),
-    0,
-  )
+    (sum, wallet) =>
+      sum + (txCountByCustomer.get(String(wallet.customerId)) || 0),
+    0
+  );
 
   const printColumns = [
     { key: "customerName", label: "اسم العميل" },
@@ -406,87 +547,197 @@ export default function WalletsPage() {
     { key: "balance", label: "الرصيد" },
     { key: "transactionsCount", label: "عدد المعاملات" },
     { key: "createdAt", label: "تاريخ الإنشاء" },
-  ]
+  ];
 
   const handleApproveTransfer = async (requestId: string, note?: string) => {
     try {
-      setTransferActionLoading(requestId)
-      await adminWalletsAPI.approveBankTransfer(requestId, { approved: true, notes: note || "" })
+      setTransferActionLoading(requestId);
+      await adminWalletsAPI.approveBankTransfer(requestId, {
+        approved: true,
+        notes: note || "",
+      });
       setBankTransferRequests((prev) =>
         prev.map((req) =>
-          req._id === requestId ? { ...req, status: "completed" as const, notes: note || req.notes } : req,
-        ),
-      )
+          req._id === requestId
+            ? { ...req, status: "completed" as const, notes: note || req.notes }
+            : req
+        )
+      );
       if (selectedTransfer && selectedTransfer._id === requestId) {
-        setSelectedTransfer({ ...selectedTransfer, status: "completed", notes: note || selectedTransfer.notes })
+        setSelectedTransfer({
+          ...selectedTransfer,
+          status: "completed",
+          notes: note || selectedTransfer.notes,
+        });
       }
-      alert("تمت الموافقة على التحويل وإضافة الرصيد")
-      fetchBankTransfers()
-      fetchPendingPreview()
+      alert("تمت الموافقة على التحويل وإضافة الرصيد");
+      fetchBankTransfers();
+      fetchPendingPreview();
     } catch (e: any) {
-      alert(e?.message || "فشل الموافقة على التحويل")
+      alert(e?.message || "فشل الموافقة على التحويل");
     } finally {
-      setTransferActionLoading(null)
+      setTransferActionLoading(null);
     }
-  }
+  };
 
   const handleRejectTransfer = async (requestId: string, note?: string) => {
     try {
-      setTransferActionLoading(requestId)
-      await adminWalletsAPI.approveBankTransfer(requestId, { approved: false, notes: note || "" })
+      setTransferActionLoading(requestId);
+      await adminWalletsAPI.approveBankTransfer(requestId, {
+        approved: false,
+        notes: note || "",
+      });
       setBankTransferRequests((prev) =>
-        prev.map((req) => (req._id === requestId ? { ...req, status: "rejected" as const, notes: note || req.notes } : req)),
-      )
+        prev.map((req) =>
+          req._id === requestId
+            ? { ...req, status: "rejected" as const, notes: note || req.notes }
+            : req
+        )
+      );
       if (selectedTransfer && selectedTransfer._id === requestId) {
-        setSelectedTransfer({ ...selectedTransfer, status: "rejected", notes: note || selectedTransfer.notes })
+        setSelectedTransfer({
+          ...selectedTransfer,
+          status: "rejected",
+          notes: note || selectedTransfer.notes,
+        });
       }
-      alert("تم رفض التحويل")
-      fetchBankTransfers()
-      fetchPendingPreview()
+      alert("تم رفض التحويل");
+      fetchBankTransfers();
+      fetchPendingPreview();
     } catch (e: any) {
-      alert(e?.message || "فشل رفض التحويل")
+      alert(e?.message || "فشل رفض التحويل");
     } finally {
-      setTransferActionLoading(null)
+      setTransferActionLoading(null);
     }
-  }
+  };
 
   const pendingTransfers = pendingPreview.length
     ? pendingPreview
-    : bankTransferRequests.filter((req) => req.status === "pending")
-  const totalPendingAmount = pendingTransfers.reduce((sum, req) => sum + req.amount, 0)
-  const totalTransfersPages = Math.ceil(transfersPagination.total / transferPerPage) || 1
-  const transfersStartIndex = (transfersPagination.page - 1) * transferPerPage
-  const transfersEndIndex = transfersStartIndex + bankTransferRequests.length
+    : bankTransferRequests.filter((req) => req.status === "pending");
+  const totalPendingAmount = pendingTransfers.reduce(
+    (sum, req) => sum + req.amount,
+    0
+  );
+  const totalTransfersPages =
+    Math.ceil(transfersPagination.total / transferPerPage) || 1;
+  const transfersStartIndex = (transfersPagination.page - 1) * transferPerPage;
+  const transfersEndIndex = transfersStartIndex + bankTransferRequests.length;
 
-  const totalWalletsPages = Math.ceil(filteredWallets.length / itemsPerPage)
-  const walletsStartIndex = (currentPage - 1) * itemsPerPage
-  const walletsEndIndex = walletsStartIndex + itemsPerPage
-  const paginatedWallets = filteredWallets.slice(walletsStartIndex, walletsEndIndex)
+  const totalWalletsPages = Math.ceil(filteredWallets.length / itemsPerPage);
+  const walletsStartIndex = (currentPage - 1) * itemsPerPage;
+  const walletsEndIndex = walletsStartIndex + itemsPerPage;
+  const paginatedWallets = filteredWallets.slice(
+    walletsStartIndex,
+    walletsEndIndex
+  );
 
-  const totalTransactionsPages = Math.ceil(filteredTransactions.length / transactionsPerPage)
-  const transactionsStartIndex = (currentTransactionsPage - 1) * transactionsPerPage
-  const transactionsEndIndex = transactionsStartIndex + transactionsPerPage
-  const paginatedTransactions = filteredTransactions.slice(transactionsStartIndex, transactionsEndIndex)
+  const totalTransactionsPages = Math.ceil(
+    filteredTransactions.length / transactionsPerPage
+  );
+  const transactionsStartIndex =
+    (currentTransactionsPage - 1) * transactionsPerPage;
+  const transactionsEndIndex = transactionsStartIndex + transactionsPerPage;
+  const paginatedTransactions = filteredTransactions.slice(
+    transactionsStartIndex,
+    transactionsEndIndex
+  );
 
   const openUserWalletDetails = async (customerId: string) => {
     try {
-      setWalletDetailsOpen(true)
-      setWalletDetailsLoading(true)
-      setWalletDetailsError(null)
-      const res = await adminWalletsAPI.getUserWallet(customerId)
-      const payload = (res as any)?.data?.data || (res as any)?.data || (res as any)
-      setSelectedUserWallet(payload)
+      setWalletDetailsOpen(true);
+      setWalletDetailsLoading(true);
+      setWalletDetailsError(null);
+      const res = await adminWalletsAPI.getUserWallet(customerId);
+      const payload =
+        (res as any)?.data?.data || (res as any)?.data || (res as any);
+      setSelectedUserWallet(payload);
     } catch (e: any) {
-      setWalletDetailsError(e?.message || "فشل تحميل تفاصيل المحفظة")
+      setWalletDetailsError(e?.message || "فشل تحميل تفاصيل المحفظة");
     } finally {
-      setWalletDetailsLoading(false)
+      setWalletDetailsLoading(false);
     }
-  }
+  };
+
+  const fetchMoyasarPayments = useCallback(async () => {
+    try {
+      setMoyasarPaymentsLoading(true);
+      setMoyasarPaymentsError(null);
+
+      const response = await moyasarPaymentsAPI.getAll({
+        page: moyasarPaymentsPage,
+        limit: moyasarPaymentsPerPage,
+      });
+
+      const data = response?.data || response;
+      if (data?.success && Array.isArray(data.data)) {
+        setMoyasarPayments(data.data);
+        setMoyasarPaymentsPagination(
+          data.pagination || {
+            total: data.data.length,
+            page: moyasarPaymentsPage,
+            pages: 1,
+            limit: moyasarPaymentsPerPage,
+          }
+        );
+        setMoyasarPaymentsSummary(
+          data.summary || {
+            totalAmount: 0,
+            totalTransactions: data.data.length,
+            statusCounts: [],
+          }
+        );
+      } else {
+        setMoyasarPayments([]);
+        setMoyasarPaymentsPagination({
+          total: 0,
+          page: 1,
+          pages: 1,
+          limit: moyasarPaymentsPerPage,
+        });
+      }
+    } catch (err: any) {
+      console.error("خطأ في جلب دفعات Moyasar:", err);
+      setMoyasarPaymentsError(err.message || "فشل تحميل دفعات Moyasar");
+      setMoyasarPayments([]);
+      setMoyasarPaymentsPagination({
+        total: 0,
+        page: 1,
+        pages: 1,
+        limit: moyasarPaymentsPerPage,
+      });
+    } finally {
+      setMoyasarPaymentsLoading(false);
+    }
+  }, [moyasarPaymentsPage, moyasarPaymentsPerPage]);
+
+  const openMoyasarPaymentDetails = async (payment: MoyasarPayment) => {
+    try {
+      const response = await moyasarPaymentsAPI.getById(
+        payment.moyasarPaymentId
+      );
+      const data = response?.data || response;
+      if (data?.success && data.data) {
+        setSelectedMoyasarPayment(data.data);
+        setMoyasarPaymentDetailsOpen(true);
+      } else {
+        setSelectedMoyasarPayment(payment);
+        setMoyasarPaymentDetailsOpen(true);
+      }
+    } catch (error) {
+      console.error("خطأ في جلب تفاصيل الدفعة:", error);
+      setSelectedMoyasarPayment(payment);
+      setMoyasarPaymentDetailsOpen(true);
+    }
+  };
 
   return (
     <DashboardLayout>
       <div className="min-h-screen bg-gray-50 p-6">
-        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="space-y-6">
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="space-y-6"
+        >
           {/* Header */}
           <div className="bg-white backdrop-blur-sm rounded-2xl p-6 shadow-lg border border-gray-200">
             <div className="flex items-center justify-between">
@@ -495,8 +746,12 @@ export default function WalletsPage() {
                   <Wallet className="w-7 h-7 text-white" />
                 </div>
                 <div>
-                  <h1 className="text-3xl font-bold text-gray-900">إدارة المحافظ</h1>
-                  <p className="text-gray-500">متابعة وإدارة محافظ المستخدمين</p>
+                  <h1 className="text-3xl font-bold text-gray-900">
+                    إدارة المحافظ
+                  </h1>
+                  <p className="text-gray-500">
+                    متابعة وإدارة محافظ المستخدمين
+                  </p>
                 </div>
               </div>
               <div className="flex gap-3">
@@ -511,7 +766,24 @@ export default function WalletsPage() {
                   }`}
                 >
                   <History className="w-5 h-5" />
-                  {showTransactions ? "عرض المحافظ" : `عرض المعاملات (${allTransactions.length})`}
+                  {showTransactions
+                    ? "عرض المحافظ"
+                    : `عرض المعاملات (${allTransactions.length})`}
+                </motion.button>
+                <motion.button
+                  whileHover={{ scale: 1.05 }}
+                  whileTap={{ scale: 0.95 }}
+                  onClick={() => setShowMoyasarPayments(!showMoyasarPayments)}
+                  className={`flex items-center gap-2 px-6 py-3 rounded-xl transition-all ${
+                    showMoyasarPayments
+                      ? "bg-gradient-to-r from-green-500 to-green-600 text-white shadow-lg"
+                      : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+                  }`}
+                >
+                  <CreditCard className="w-5 h-5" />
+                  {showMoyasarPayments
+                    ? "عرض المحافظ"
+                    : `دفعات Moyasar (${moyasarPaymentsPagination.total})`}
                 </motion.button>
                 <motion.button
                   whileHover={{ scale: 1.05 }}
@@ -525,6 +797,316 @@ export default function WalletsPage() {
             </div>
           </div>
 
+          {/* Moyasar Payments Section */}
+          {showMoyasarPayments && (
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.1 }}
+              className="bg-white backdrop-blur-sm rounded-2xl shadow-lg border border-gray-200 overflow-hidden"
+            >
+              <div className="bg-gradient-to-r from-green-500 to-green-600 p-6">
+                <h2 className="text-2xl font-bold text-white flex items-center gap-3">
+                  <CreditCard className="w-6 h-6" />
+                  دفعات Moyasar ({moyasarPaymentsPagination.total})
+                </h2>
+                <p className="text-green-100 mt-2">
+                  عرض تفصيلي لجميع الدفعات من خلال Moyasar
+                </p>
+                <div className="mt-4 grid grid-cols-2 md:grid-cols-4 gap-4">
+                  <div className="bg-white/10 backdrop-blur-sm rounded-lg p-3">
+                    <p className="text-white text-sm">إجمالي المبلغ</p>
+                    <p className="text-white font-bold text-lg">
+                      {moyasarPaymentsSummary.totalAmount.toLocaleString()} ر.س
+                    </p>
+                  </div>
+                  <div className="bg-white/10 backdrop-blur-sm rounded-lg p-3">
+                    <p className="text-white text-sm">عدد الدفعات</p>
+                    <p className="text-white font-bold text-lg">
+                      {moyasarPaymentsSummary.totalTransactions.toLocaleString()}
+                    </p>
+                  </div>
+                  <div className="bg-white/10 backdrop-blur-sm rounded-lg p-3">
+                    <p className="text-white text-sm">الدفعات الناجحة</p>
+                    <p className="text-white font-bold text-lg">
+                      {moyasarPaymentsSummary.statusCounts.find(
+                        (s) => s._id === "completed"
+                      )?.count || 0}
+                    </p>
+                  </div>
+                  <div className="bg-white/10 backdrop-blur-sm rounded-lg p-3">
+                    <p className="text-white text-sm">الدفعات الفاشلة</p>
+                    <p className="text-white font-bold text-lg">
+                      {moyasarPaymentsSummary.statusCounts.find(
+                        (s) => s._id === "failed"
+                      )?.count || 0}
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="p-6">
+                {moyasarPaymentsLoading ? (
+                  <div className="flex items-center justify-center py-12">
+                    <Loader2 className="w-6 h-6 text-green-500 animate-spin" />
+                  </div>
+                ) : moyasarPaymentsError ? (
+                  <div className="p-6 text-center text-red-600">
+                    {moyasarPaymentsError}
+                  </div>
+                ) : moyasarPayments.length === 0 ? (
+                  <div className="p-6 text-center text-gray-500">
+                    لا توجد دفعات من Moyasar
+                  </div>
+                ) : (
+                  <>
+                    <div className="border-b border-gray-200 px-6 py-4 bg-gray-50">
+                      <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
+                        <div className="text-sm text-gray-600">
+                          عرض{" "}
+                          <span className="font-semibold text-gray-900">
+                            {(moyasarPaymentsPage - 1) *
+                              moyasarPaymentsPerPage +
+                              1}
+                          </span>{" "}
+                          إلى{" "}
+                          <span className="font-semibold text-gray-900">
+                            {Math.min(
+                              moyasarPaymentsPage * moyasarPaymentsPerPage,
+                              moyasarPaymentsPagination.total
+                            )}
+                          </span>{" "}
+                          من{" "}
+                          <span className="font-semibold text-gray-900">
+                            {moyasarPaymentsPagination.total.toLocaleString()}
+                          </span>{" "}
+                          دفعة
+                        </div>
+
+                        <div className="flex items-center gap-2">
+                          <label className="text-sm text-gray-600">
+                            عدد الصفوف:
+                          </label>
+                          <select
+                            value={moyasarPaymentsPerPage}
+                            onChange={(e) => {
+                              setMoyasarPaymentsPerPage(Number(e.target.value));
+                              setMoyasarPaymentsPage(1);
+                            }}
+                            className="px-3 py-1.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                          >
+                            <option value={5}>5</option>
+                            <option value={10}>10</option>
+                            <option value={20}>20</option>
+                            <option value={50}>50</option>
+                            <option value={100}>100</option>
+                          </select>
+                        </div>
+
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={() => setMoyasarPaymentsPage(1)}
+                            disabled={moyasarPaymentsPage === 1}
+                            className="px-3 py-2 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                          >
+                            الأول
+                          </button>
+                          <button
+                            onClick={() =>
+                              setMoyasarPaymentsPage(moyasarPaymentsPage - 1)
+                            }
+                            disabled={moyasarPaymentsPage === 1}
+                            className="p-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                          >
+                            <ChevronRight className="w-5 h-5" />
+                          </button>
+
+                          <div className="flex items-center gap-1">
+                            {Array.from(
+                              { length: moyasarPaymentsPagination.pages },
+                              (_, i) => i + 1
+                            )
+                              .filter((page) => {
+                                return (
+                                  page === 1 ||
+                                  page === moyasarPaymentsPagination.pages ||
+                                  (page >= moyasarPaymentsPage - 1 &&
+                                    page <= moyasarPaymentsPage + 1)
+                                );
+                              })
+                              .map((page, index, array) => {
+                                const showEllipsis =
+                                  index > 0 && page - array[index - 1] > 1;
+                                return (
+                                  <div
+                                    key={page}
+                                    className="flex items-center gap-1"
+                                  >
+                                    {showEllipsis && (
+                                      <span className="px-2 text-gray-500">
+                                        ...
+                                      </span>
+                                    )}
+                                    <button
+                                      onClick={() =>
+                                        setMoyasarPaymentsPage(page)
+                                      }
+                                      className={`min-w-[2.5rem] px-3 py-2 rounded-lg text-sm font-medium transition-all ${
+                                        moyasarPaymentsPage === page
+                                          ? "bg-gradient-to-r from-green-500 to-green-600 text-white shadow-lg"
+                                          : "border border-gray-300 text-gray-700 hover:bg-gray-100"
+                                      }`}
+                                    >
+                                      {page}
+                                    </button>
+                                  </div>
+                                );
+                              })}
+                          </div>
+
+                          <button
+                            onClick={() =>
+                              setMoyasarPaymentsPage(moyasarPaymentsPage + 1)
+                            }
+                            disabled={
+                              moyasarPaymentsPage ===
+                              moyasarPaymentsPagination.pages
+                            }
+                            className="p-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                          >
+                            <ChevronLeft className="w-5 h-5" />
+                          </button>
+                          <button
+                            onClick={() =>
+                              setMoyasarPaymentsPage(
+                                moyasarPaymentsPagination.pages
+                              )
+                            }
+                            disabled={
+                              moyasarPaymentsPage ===
+                              moyasarPaymentsPagination.pages
+                            }
+                            className="px-3 py-2 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                          >
+                            الأخير
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="overflow-x-auto">
+                      <table className="w-full">
+                        <thead className="bg-gradient-to-r from-green-500 to-green-600 text-white">
+                          <tr>
+                            <th className="px-6 py-4 text-right text-sm font-semibold">
+                              العميل
+                            </th>
+                            <th className="px-6 py-4 text-right text-sm font-semibold">
+                              ID الدفعة
+                            </th>
+                            <th className="px-6 py-4 text-right text-sm font-semibold">
+                              المبلغ
+                            </th>
+                            <th className="px-6 py-4 text-right text-sm font-semibold">
+                              الحالة
+                            </th>
+                            <th className="px-6 py-4 text-right text-sm font-semibold">
+                              تاريخ الدفع
+                            </th>
+                            <th className="px-6 py-4 text-right text-sm font-semibold">
+                              الإجراءات
+                            </th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-200">
+                          {moyasarPayments.map((payment) => (
+                            <motion.tr
+                              key={payment._id}
+                              initial={{ opacity: 0 }}
+                              animate={{ opacity: 1 }}
+                              className="hover:bg-green-50/50 transition-colors"
+                            >
+                              <td className="px-6 py-4">
+                                <div className="flex items-center gap-3">
+                                  <div className="w-10 h-10 bg-gradient-to-br from-green-500 to-green-600 rounded-lg flex items-center justify-center text-white font-semibold text-sm">
+                                    <User className="w-5 h-5" />
+                                  </div>
+                                  <div>
+                                    <p className="font-medium text-gray-900">
+                                      {payment.customerName}
+                                    </p>
+                                    <p className="text-sm text-gray-500">
+                                      {payment.customerEmail}
+                                    </p>
+                                  </div>
+                                </div>
+                              </td>
+                              <td className="px-6 py-4">
+                                <span className="font-mono text-sm text-gray-600">
+                                  {payment.moyasarPaymentId}
+                                </span>
+                              </td>
+                              <td className="px-6 py-4">
+                                <span className="text-lg font-bold text-gray-900">
+                                  {payment.amount.toLocaleString()} ر.س
+                                </span>
+                              </td>
+                              <td className="px-6 py-4">
+                                <span
+                                  className={`px-3 py-1 rounded-full text-xs font-semibold capitalize ${
+                                    payment.status === "completed"
+                                      ? "bg-green-100 text-green-700"
+                                      : payment.status === "failed"
+                                      ? "bg-red-100 text-red-700"
+                                      : "bg-amber-100 text-amber-700"
+                                  }`}
+                                >
+                                  {payment.status === "completed"
+                                    ? "ناجح"
+                                    : payment.status === "failed"
+                                    ? "فاشل"
+                                    : payment.status}
+                                </span>
+                              </td>
+                              <td className="px-6 py-4">
+                                <div className="flex items-center gap-2 text-gray-600">
+                                  <Calendar className="w-4 h-4" />
+                                  <span className="text-sm">
+                                    {new Date(
+                                      payment.createdAt
+                                    ).toLocaleDateString("ar-SA", {
+                                      year: "numeric",
+                                      month: "short",
+                                      day: "numeric",
+                                      hour: "2-digit",
+                                      minute: "2-digit",
+                                    })}
+                                  </span>
+                                </div>
+                              </td>
+                              <td className="px-6 py-4">
+                                <motion.button
+                                  whileHover={{ scale: 1.05 }}
+                                  whileTap={{ scale: 0.95 }}
+                                  onClick={() =>
+                                    openMoyasarPaymentDetails(payment)
+                                  }
+                                  className="px-4 py-2 bg-green-100 text-green-700 rounded-lg hover:bg-green-200 transition-colors font-medium text-sm"
+                                >
+                                  عرض التفاصيل
+                                </motion.button>
+                              </td>
+                            </motion.tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </>
+                )}
+              </div>
+            </motion.div>
+          )}
+
           {/* Wallets Summary */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             <motion.div
@@ -536,11 +1118,15 @@ export default function WalletsPage() {
                   <DollarSign className="w-7 h-7 text-white" />
                 </div>
                 <div className="space-y-2">
-                  <p className="text-gray-500 text-sm font-medium">إجمالي الرصيد</p>
+                  <p className="text-gray-500 text-sm font-medium">
+                    إجمالي الرصيد
+                  </p>
                   <h2 className="text-4xl font-bold text-gray-900 tabular-nums break-words max-w-full">
-                    {totalBalance.toLocaleString('en-US')} ر.س
+                    {totalBalance.toLocaleString("en-US")} ر.س
                   </h2>
-                  <p className="text-gray-400 text-sm">عدد المحافظ: {filteredWallets.length}</p>
+                  <p className="text-gray-400 text-sm">
+                    عدد المحافظ: {filteredWallets.length}
+                  </p>
                 </div>
               </div>
             </motion.div>
@@ -554,9 +1140,11 @@ export default function WalletsPage() {
                   <History className="w-7 h-7 text-white" />
                 </div>
                 <div className="space-y-2">
-                  <p className="text-gray-500 text-sm font-medium">إجمالي المعاملات</p>
+                  <p className="text-gray-500 text-sm font-medium">
+                    إجمالي المعاملات
+                  </p>
                   <h2 className="text-4xl font-bold text-gray-900 tabular-nums break-words max-w-full">
-                    {totalTransactions.toLocaleString('en-US')}
+                    {totalTransactions.toLocaleString("en-US")}
                   </h2>
                   <p className="text-gray-400 text-sm">جميع المحافظ النشطة</p>
                 </div>
@@ -572,12 +1160,17 @@ export default function WalletsPage() {
                   <TrendingUp className="w-7 h-7 text-white" />
                 </div>
                 <div className="space-y-2">
-                  <p className="text-gray-500 text-sm font-medium">متوسط الرصيد</p>
+                  <p className="text-gray-500 text-sm font-medium">
+                    متوسط الرصيد
+                  </p>
                   <h2 className="text-4xl font-bold text-gray-900 tabular-nums break-words max-w-full">
                     {filteredWallets.length > 0
-                      ? (totalBalance / filteredWallets.length).toLocaleString('en-US', {
-                          maximumFractionDigits: 2,
-                        })
+                      ? (totalBalance / filteredWallets.length).toLocaleString(
+                          "en-US",
+                          {
+                            maximumFractionDigits: 2,
+                          }
+                        )
                       : 0}{" "}
                     ر.س
                   </h2>
@@ -609,10 +1202,14 @@ export default function WalletsPage() {
                     customerEmail: w.customerEmail,
                     balance: w.balance,
                     transactionsCount: w.transactions?.length || 0,
-                    createdAt: new Date(w.createdAt).toLocaleDateString("ar-SA"),
+                    createdAt: new Date(w.createdAt).toLocaleDateString(
+                      "ar-SA"
+                    ),
                   }))}
                   title="قائمة المحافظ"
-                  subtitle={`إجمالي ${filteredWallets.length} محفظة - الرصيد الكلي: ${totalBalance.toLocaleString()} ر.س`}
+                  subtitle={`إجمالي ${
+                    filteredWallets.length
+                  } محفظة - الرصيد الكلي: ${totalBalance.toLocaleString()} ر.س`}
                   columns={printColumns}
                   showStats={true}
                 />
@@ -621,7 +1218,11 @@ export default function WalletsPage() {
                 <Search className="absolute right-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
                 <input
                   type="text"
-                  placeholder={showTransactions ? "البحث في المعاملات..." : "البحث بالاسم أو البريد الإلكتروني..."}
+                  placeholder={
+                    showTransactions
+                      ? "البحث في المعاملات..."
+                      : "البحث بالاسم أو البريد الإلكتروني..."
+                  }
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
                   className="w-full pr-12 pl-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-500 transition-all"
@@ -643,14 +1244,18 @@ export default function WalletsPage() {
                     <Building2 className="w-5 h-5 text-amber-500" />
                     إدارة طلبات التحويل البنكي
                   </h2>
-                  <p className="text-gray-500 text-sm">تحكم كامل بطلبات العملاء مع التصفية حسب الحالة</p>
+                  <p className="text-gray-500 text-sm">
+                    تحكم كامل بطلبات العملاء مع التصفية حسب الحالة
+                  </p>
                 </div>
                 <div className="flex flex-wrap gap-3 items-center">
                   <select
                     value={transferStatusFilter}
                     onChange={(e) => {
-                      setTransferStatusFilter(e.target.value as typeof transferStatusFilter)
-                      setTransferPage(1)
+                      setTransferStatusFilter(
+                        e.target.value as typeof transferStatusFilter
+                      );
+                      setTransferPage(1);
                     }}
                     className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-amber-500"
                   >
@@ -663,8 +1268,8 @@ export default function WalletsPage() {
                   <select
                     value={transferPerPage}
                     onChange={(e) => {
-                      setTransferPerPage(Number(e.target.value))
-                      setTransferPage(1)
+                      setTransferPerPage(Number(e.target.value));
+                      setTransferPage(1);
                     }}
                     className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-amber-500"
                   >
@@ -679,7 +1284,11 @@ export default function WalletsPage() {
                     className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-amber-500 text-white hover:bg-amber-600 transition"
                     disabled={bankTransfersLoading}
                   >
-                    <RefreshCw className={`w-4 h-4 ${bankTransfersLoading ? "animate-spin" : ""}`} />
+                    <RefreshCw
+                      className={`w-4 h-4 ${
+                        bankTransfersLoading ? "animate-spin" : ""
+                      }`}
+                    />
                     تحديث
                   </button>
                 </div>
@@ -687,16 +1296,46 @@ export default function WalletsPage() {
               <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
                 {(
                   [
-                    { label: "معلقة", value: transferStats.pending, color: "text-amber-600", bg: "bg-amber-50" },
-                    { label: "مكتملة", value: transferStats.completed, color: "text-green-600", bg: "bg-green-50" },
-                    { label: "معتمدة", value: transferStats.approved, color: "text-blue-600", bg: "bg-blue-50" },
-                    { label: "مرفوضة", value: transferStats.rejected, color: "text-red-600", bg: "bg-red-50" },
-                    { label: "فاشلة", value: transferStats.failed, color: "text-gray-600", bg: "bg-gray-100" },
+                    {
+                      label: "معلقة",
+                      value: transferStats.pending,
+                      color: "text-amber-600",
+                      bg: "bg-amber-50",
+                    },
+                    {
+                      label: "مكتملة",
+                      value: transferStats.completed,
+                      color: "text-green-600",
+                      bg: "bg-green-50",
+                    },
+                    {
+                      label: "معتمدة",
+                      value: transferStats.approved,
+                      color: "text-blue-600",
+                      bg: "bg-blue-50",
+                    },
+                    {
+                      label: "مرفوضة",
+                      value: transferStats.rejected,
+                      color: "text-red-600",
+                      bg: "bg-red-50",
+                    },
+                    {
+                      label: "فاشلة",
+                      value: transferStats.failed,
+                      color: "text-gray-600",
+                      bg: "bg-gray-100",
+                    },
                   ] as const
                 ).map((stat) => (
-                  <div key={stat.label} className={`p-4 rounded-2xl border ${stat.bg}`}>
+                  <div
+                    key={stat.label}
+                    className={`p-4 rounded-2xl border ${stat.bg}`}
+                  >
                     <p className="text-sm text-gray-500">{stat.label}</p>
-                    <p className={`text-2xl font-bold ${stat.color}`}>{stat.value.toLocaleString()}</p>
+                    <p className={`text-2xl font-bold ${stat.color}`}>
+                      {stat.value.toLocaleString()}
+                    </p>
                   </div>
                 ))}
               </div>
@@ -706,9 +1345,13 @@ export default function WalletsPage() {
                     <Loader2 className="w-6 h-6 text-amber-500 animate-spin" />
                   </div>
                 ) : bankTransfersError ? (
-                  <div className="p-6 text-center text-red-600">{bankTransfersError}</div>
+                  <div className="p-6 text-center text-red-600">
+                    {bankTransfersError}
+                  </div>
                 ) : bankTransferRequests.length === 0 ? (
-                  <div className="p-6 text-center text-gray-500">لا توجد طلبات مطابقة للتصفية الحالية</div>
+                  <div className="p-6 text-center text-gray-500">
+                    لا توجد طلبات مطابقة للتصفية الحالية
+                  </div>
                 ) : (
                   <>
                     <table className="w-full">
@@ -727,12 +1370,18 @@ export default function WalletsPage() {
                           <tr key={request._id} className="hover:bg-gray-50/80">
                             <td className="px-4 py-3">
                               <div>
-                                <p className="font-semibold text-gray-900">{request.customerName}</p>
-                                <p className="text-xs text-gray-500">{request.customerEmail}</p>
+                                <p className="font-semibold text-gray-900">
+                                  {request.customerName}
+                                </p>
+                                <p className="text-xs text-gray-500">
+                                  {request.customerEmail}
+                                </p>
                               </div>
                             </td>
                             <td className="px-4 py-3">
-                              <span className="font-bold text-gray-900">{request.amount.toLocaleString()} ر.س</span>
+                              <span className="font-bold text-gray-900">
+                                {request.amount.toLocaleString()} ر.س
+                              </span>
                             </td>
                             <td className="px-4 py-3">
                               <span
@@ -740,23 +1389,26 @@ export default function WalletsPage() {
                                   request.status === "completed"
                                     ? "bg-green-100 text-green-700"
                                     : request.status === "rejected"
-                                      ? "bg-red-100 text-red-700"
-                                      : request.status === "approved"
-                                        ? "bg-blue-100 text-blue-700"
-                                        : "bg-amber-100 text-amber-700"
+                                    ? "bg-red-100 text-red-700"
+                                    : request.status === "approved"
+                                    ? "bg-blue-100 text-blue-700"
+                                    : "bg-amber-100 text-amber-700"
                                 }`}
                               >
                                 {request.status}
                               </span>
                             </td>
                             <td className="px-4 py-3 text-sm text-gray-600">
-                              {new Date(request.createdAt).toLocaleDateString("ar-SA", {
-                                year: "numeric",
-                                month: "short",
-                                day: "numeric",
-                                hour: "2-digit",
-                                minute: "2-digit",
-                              })}
+                              {new Date(request.createdAt).toLocaleDateString(
+                                "ar-SA",
+                                {
+                                  year: "numeric",
+                                  month: "short",
+                                  day: "numeric",
+                                  hour: "2-digit",
+                                  minute: "2-digit",
+                                }
+                              )}
                             </td>
                             <td className="px-4 py-3 text-sm text-gray-600">
                               {request.notes?.slice(0, 60) || "لا توجد ملاحظات"}
@@ -765,20 +1417,26 @@ export default function WalletsPage() {
                               <div className="flex items-center justify-center gap-2">
                                 <button
                                   onClick={() => {
-                                    const note = prompt("أدخل ملاحظة (اختياري):") || ""
-                                    handleApproveTransfer(request._id, note)
+                                    const note =
+                                      prompt("أدخل ملاحظة (اختياري):") || "";
+                                    handleApproveTransfer(request._id, note);
                                   }}
-                                  disabled={transferActionLoading === request._id}
+                                  disabled={
+                                    transferActionLoading === request._id
+                                  }
                                   className="px-3 py-1 text-sm rounded-lg bg-green-100 text-green-700 hover:bg-green-200 disabled:opacity-50"
                                 >
                                   موافقة
                                 </button>
                                 <button
                                   onClick={() => {
-                                    const note = prompt("سبب الرفض (اختياري):") || ""
-                                    handleRejectTransfer(request._id, note)
+                                    const note =
+                                      prompt("سبب الرفض (اختياري):") || "";
+                                    handleRejectTransfer(request._id, note);
                                   }}
-                                  disabled={transferActionLoading === request._id}
+                                  disabled={
+                                    transferActionLoading === request._id
+                                  }
                                   className="px-3 py-1 text-sm rounded-lg bg-red-100 text-red-700 hover:bg-red-200 disabled:opacity-50"
                                 >
                                   رفض
@@ -803,10 +1461,16 @@ export default function WalletsPage() {
                       <div>
                         عرض{" "}
                         <span className="font-semibold text-gray-900">
-                          {transfersStartIndex + 1} - {Math.min(transfersEndIndex, transfersPagination.total)}
+                          {transfersStartIndex + 1} -{" "}
+                          {Math.min(
+                            transfersEndIndex,
+                            transfersPagination.total
+                          )}
                         </span>{" "}
                         من{" "}
-                        <span className="font-semibold text-gray-900">{transfersPagination.total.toLocaleString()}</span>
+                        <span className="font-semibold text-gray-900">
+                          {transfersPagination.total.toLocaleString()}
+                        </span>
                       </div>
                       <div className="flex items-center gap-2">
                         <button
@@ -817,7 +1481,9 @@ export default function WalletsPage() {
                           الأول
                         </button>
                         <button
-                          onClick={() => setTransferPage((prev) => Math.max(prev - 1, 1))}
+                          onClick={() =>
+                            setTransferPage((prev) => Math.max(prev - 1, 1))
+                          }
                           disabled={transferPage === 1}
                           className="p-2 border rounded-lg disabled:opacity-50"
                         >
@@ -827,7 +1493,11 @@ export default function WalletsPage() {
                           {transferPage} / {totalTransfersPages}
                         </span>
                         <button
-                          onClick={() => setTransferPage((prev) => Math.min(prev + 1, totalTransfersPages))}
+                          onClick={() =>
+                            setTransferPage((prev) =>
+                              Math.min(prev + 1, totalTransfersPages)
+                            )
+                          }
                           disabled={transferPage === totalTransfersPages}
                           className="p-2 border rounded-lg disabled:opacity-50"
                         >
@@ -863,12 +1533,15 @@ export default function WalletsPage() {
                       طلبات التحويل البنكي المعلقة
                     </h2>
                     <p className="text-purple-100 mt-2">
-                      {pendingTransfers.length} طلب معلق بإجمالي {totalPendingAmount.toLocaleString()} ر.س
+                      {pendingTransfers.length} طلب معلق بإجمالي{" "}
+                      {totalPendingAmount.toLocaleString()} ر.س
                     </p>
                   </div>
                   <div className="flex items-center gap-3 bg-white/20 backdrop-blur-sm rounded-xl px-4 py-2">
                     <Clock className="w-5 h-5 text-white" />
-                    <span className="text-white font-bold">{pendingTransfers.length}</span>
+                    <span className="text-white font-bold">
+                      {pendingTransfers.length}
+                    </span>
                   </div>
                 </div>
               </div>
@@ -877,13 +1550,27 @@ export default function WalletsPage() {
                 <table className="w-full">
                   <thead className="bg-purple-50">
                     <tr>
-                      <th className="px-6 py-4 text-right text-sm font-semibold text-purple-900">معلومات العميل</th>
-                      <th className="px-6 py-4 text-right text-sm font-semibold text-purple-900">المبلغ</th>
-                      <th className="px-6 py-4 text-right text-sm font-semibold text-purple-900">معلومات البنك</th>
-                      <th className="px-6 py-4 text-right text-sm font-semibold text-purple-900">اسم صاحب الحساب</th>
-                      <th className="px-6 py-4 text-right text-sm font-semibold text-purple-900">تاريخ الطلب</th>
-                      <th className="px-6 py-4 text-right text-sm font-semibold text-purple-900">الملاحظات</th>
-                      <th className="px-6 py-4 text-right text-sm font-semibold text-purple-900">الإجراءات</th>
+                      <th className="px-6 py-4 text-right text-sm font-semibold text-purple-900">
+                        معلومات العميل
+                      </th>
+                      <th className="px-6 py-4 text-right text-sm font-semibold text-purple-900">
+                        المبلغ
+                      </th>
+                      <th className="px-6 py-4 text-right text-sm font-semibold text-purple-900">
+                        معلومات البنك
+                      </th>
+                      <th className="px-6 py-4 text-right text-sm font-semibold text-purple-900">
+                        اسم صاحب الحساب
+                      </th>
+                      <th className="px-6 py-4 text-right text-sm font-semibold text-purple-900">
+                        تاريخ الطلب
+                      </th>
+                      <th className="px-6 py-4 text-right text-sm font-semibold text-purple-900">
+                        الملاحظات
+                      </th>
+                      <th className="px-6 py-4 text-right text-sm font-semibold text-purple-900">
+                        الإجراءات
+                      </th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-200">
@@ -900,7 +1587,9 @@ export default function WalletsPage() {
                               <User className="w-5 h-5" />
                             </div>
                             <div>
-                              <p className="font-medium text-gray-900">{request.customerName}</p>
+                              <p className="font-medium text-gray-900">
+                                {request.customerName}
+                              </p>
                               <p className="text-sm text-gray-500 flex items-center gap-1">
                                 <Mail className="w-3 h-3" />
                                 {request.customerEmail}
@@ -920,30 +1609,41 @@ export default function WalletsPage() {
                           <div className="flex items-center gap-2">
                             <Building2 className="w-4 h-4 text-gray-500" />
                             <div>
-                              <p className="font-medium text-gray-900">{request.bankName}</p>
-                              <p className="text-sm text-gray-500 font-mono">{request.accountNumber}</p>
+                              <p className="font-medium text-gray-900">
+                                {request.bankName}
+                              </p>
+                              <p className="text-sm text-gray-500 font-mono">
+                                {request.accountNumber}
+                              </p>
                             </div>
                           </div>
                         </td>
                         <td className="px-6 py-4">
-                          <span className="text-gray-700 font-medium">{request.accountHolder}</span>
+                          <span className="text-gray-700 font-medium">
+                            {request.accountHolder}
+                          </span>
                         </td>
                         <td className="px-6 py-4">
                           <div className="flex items-center gap-2 text-gray-600">
                             <Calendar className="w-4 h-4" />
                             <span className="text-sm">
-                              {new Date(request.createdAt).toLocaleDateString("ar-SA", {
-                                year: "numeric",
-                                month: "short",
-                                day: "numeric",
-                                hour: "2-digit",
-                                minute: "2-digit",
-                              })}
+                              {new Date(request.createdAt).toLocaleDateString(
+                                "ar-SA",
+                                {
+                                  year: "numeric",
+                                  month: "short",
+                                  day: "numeric",
+                                  hour: "2-digit",
+                                  minute: "2-digit",
+                                }
+                              )}
                             </span>
                           </div>
                         </td>
                         <td className="px-6 py-4">
-                          <span className="text-sm text-gray-600">{request.notes || "لا توجد ملاحظات"}</span>
+                          <span className="text-sm text-gray-600">
+                            {request.notes || "لا توجد ملاحظات"}
+                          </span>
                         </td>
                         <td className="px-6 py-4">
                           <div className="flex gap-2">
@@ -951,8 +1651,9 @@ export default function WalletsPage() {
                               whileHover={{ scale: 1.05 }}
                               whileTap={{ scale: 0.95 }}
                               onClick={() => {
-                                const note = prompt("أدخل ملاحظة (اختياري):") || ""
-                                handleApproveTransfer(request._id, note)
+                                const note =
+                                  prompt("أدخل ملاحظة (اختياري):") || "";
+                                handleApproveTransfer(request._id, note);
                               }}
                               className="flex items-center gap-1 px-3 py-2 bg-green-100 text-green-700 rounded-lg hover:bg-green-200 transition-colors text-sm font-medium"
                             >
@@ -963,8 +1664,9 @@ export default function WalletsPage() {
                               whileHover={{ scale: 1.05 }}
                               whileTap={{ scale: 0.95 }}
                               onClick={() => {
-                                const note = prompt("سبب الرفض (اختياري):") || ""
-                                handleRejectTransfer(request._id, note)
+                                const note =
+                                  prompt("سبب الرفض (اختياري):") || "";
+                                handleRejectTransfer(request._id, note);
                               }}
                               className="flex items-center gap-1 px-3 py-2 bg-red-100 text-red-700 rounded-lg hover:bg-red-200 transition-colors text-sm font-medium"
                             >
@@ -975,8 +1677,8 @@ export default function WalletsPage() {
                               whileHover={{ scale: 1.05 }}
                               whileTap={{ scale: 0.95 }}
                               onClick={() => {
-                                setSelectedTransfer(request)
-                                setDetailsOpen(true)
+                                setSelectedTransfer(request);
+                                setDetailsOpen(true);
                               }}
                               className="flex items-center gap-1 px-3 py-2 bg-purple-100 text-purple-700 rounded-lg hover:bg-purple-200 transition-colors text-sm font-medium"
                             >
@@ -1001,7 +1703,9 @@ export default function WalletsPage() {
                   <History className="w-6 h-6" />
                   جميع المعاملات ({filteredTransactions.length})
                 </h2>
-                <p className="text-blue-100 mt-2">عرض تفصيلي لجميع المعاملات من كافة المحافظ</p>
+                <p className="text-blue-100 mt-2">
+                  عرض تفصيلي لجميع المعاملات من كافة المحافظ
+                </p>
               </div>
 
               {loading ? (
@@ -1019,24 +1723,41 @@ export default function WalletsPage() {
                   </button>
                 </div>
               ) : filteredTransactions.length === 0 ? (
-                <div className="p-8 text-center text-gray-500">لا توجد معاملات</div>
+                <div className="p-8 text-center text-gray-500">
+                  لا توجد معاملات
+                </div>
               ) : (
                 <>
                   <div className="border-b border-gray-200 px-6 py-4 bg-gray-50">
                     <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
                       <div className="text-sm text-gray-600">
-                        عرض <span className="font-semibold text-gray-900">{transactionsStartIndex + 1}</span> إلى{" "}
-                        <span className="font-semibold text-gray-900">{Math.min(transactionsEndIndex, filteredTransactions.length)}</span> من{" "}
-                        <span className="font-semibold text-gray-900">{filteredTransactions.length}</span> معاملة
+                        عرض{" "}
+                        <span className="font-semibold text-gray-900">
+                          {transactionsStartIndex + 1}
+                        </span>{" "}
+                        إلى{" "}
+                        <span className="font-semibold text-gray-900">
+                          {Math.min(
+                            transactionsEndIndex,
+                            filteredTransactions.length
+                          )}
+                        </span>{" "}
+                        من{" "}
+                        <span className="font-semibold text-gray-900">
+                          {filteredTransactions.length}
+                        </span>{" "}
+                        معاملة
                       </div>
 
                       <div className="flex items-center gap-2">
-                        <label className="text-sm text-gray-600">عدد الصفوف:</label>
+                        <label className="text-sm text-gray-600">
+                          عدد الصفوف:
+                        </label>
                         <select
                           value={transactionsPerPage}
                           onChange={(e) => {
-                            setTransactionsPerPage(Number(e.target.value))
-                            setCurrentTransactionsPage(1)
+                            setTransactionsPerPage(Number(e.target.value));
+                            setCurrentTransactionsPage(1);
                           }}
                           className="px-3 py-1.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                         >
@@ -1057,7 +1778,11 @@ export default function WalletsPage() {
                           الأول
                         </button>
                         <button
-                          onClick={() => setCurrentTransactionsPage(currentTransactionsPage - 1)}
+                          onClick={() =>
+                            setCurrentTransactionsPage(
+                              currentTransactionsPage - 1
+                            )
+                          }
                           disabled={currentTransactionsPage === 1}
                           className="p-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                         >
@@ -1065,23 +1790,35 @@ export default function WalletsPage() {
                         </button>
 
                         <div className="flex items-center gap-1">
-                          {Array.from({ length: totalTransactionsPages }, (_, i) => i + 1)
+                          {Array.from(
+                            { length: totalTransactionsPages },
+                            (_, i) => i + 1
+                          )
                             .filter((page) => {
                               return (
                                 page === 1 ||
                                 page === totalTransactionsPages ||
-                                (page >= currentTransactionsPage - 1 && page <= currentTransactionsPage + 1)
-                              )
+                                (page >= currentTransactionsPage - 1 &&
+                                  page <= currentTransactionsPage + 1)
+                              );
                             })
                             .map((page, index, array) => {
-                              const showEllipsis = index > 0 && page - array[index - 1] > 1
+                              const showEllipsis =
+                                index > 0 && page - array[index - 1] > 1;
                               return (
-                                <div key={page} className="flex items-center gap-1">
+                                <div
+                                  key={page}
+                                  className="flex items-center gap-1"
+                                >
                                   {showEllipsis && (
-                                    <span className="px-2 text-gray-500">...</span>
+                                    <span className="px-2 text-gray-500">
+                                      ...
+                                    </span>
                                   )}
                                   <button
-                                    onClick={() => setCurrentTransactionsPage(page)}
+                                    onClick={() =>
+                                      setCurrentTransactionsPage(page)
+                                    }
                                     className={`min-w-[2.5rem] px-3 py-2 rounded-lg text-sm font-medium transition-all ${
                                       currentTransactionsPage === page
                                         ? "bg-gradient-to-r from-blue-500 to-blue-600 text-white shadow-lg"
@@ -1091,20 +1828,30 @@ export default function WalletsPage() {
                                     {page}
                                   </button>
                                 </div>
-                              )
+                              );
                             })}
                         </div>
 
                         <button
-                          onClick={() => setCurrentTransactionsPage(currentTransactionsPage + 1)}
-                          disabled={currentTransactionsPage === totalTransactionsPages}
+                          onClick={() =>
+                            setCurrentTransactionsPage(
+                              currentTransactionsPage + 1
+                            )
+                          }
+                          disabled={
+                            currentTransactionsPage === totalTransactionsPages
+                          }
                           className="p-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                         >
                           <ChevronLeft className="w-5 h-5" />
                         </button>
                         <button
-                          onClick={() => setCurrentTransactionsPage(totalTransactionsPages)}
-                          disabled={currentTransactionsPage === totalTransactionsPages}
+                          onClick={() =>
+                            setCurrentTransactionsPage(totalTransactionsPages)
+                          }
+                          disabled={
+                            currentTransactionsPage === totalTransactionsPages
+                          }
                           className="px-3 py-2 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                         >
                           الأخير
@@ -1117,34 +1864,53 @@ export default function WalletsPage() {
                     <table className="w-full">
                       <thead className="bg-gradient-to-r from-blue-500 to-blue-600 text-white">
                         <tr>
-                          <th className="px-6 py-4 text-right text-sm font-semibold">اسم العميل</th>
-                          <th className="px-6 py-4 text-right text-sm font-semibold">بريد العميل</th>
-                          <th className="px-6 py-4 text-right text-sm font-semibold">نوع المعاملة</th>
-                          <th className="px-6 py-4 text-right text-sm font-semibold">المبلغ</th>
-                          <th className="px-6 py-4 text-right text-sm font-semibold">الوصف</th>
-                          <th className="px-6 py-4 text-right text-sm font-semibold">الرصيد بعد المعاملة</th>
-                          <th className="px-6 py-4 text-right text-sm font-semibold">التاريخ</th>
+                          <th className="px-6 py-4 text-right text-sm font-semibold">
+                            اسم العميل
+                          </th>
+                          <th className="px-6 py-4 text-right text-sm font-semibold">
+                            بريد العميل
+                          </th>
+                          <th className="px-6 py-4 text-right text-sm font-semibold">
+                            نوع المعاملة
+                          </th>
+                          <th className="px-6 py-4 text-right text-sm font-semibold">
+                            المبلغ
+                          </th>
+                          <th className="px-6 py-4 text-right text-sm font-semibold">
+                            الوصف
+                          </th>
+                          <th className="px-6 py-4 text-right text-sm font-semibold">
+                            الرصيد بعد المعاملة
+                          </th>
+                          <th className="px-6 py-4 text-right text-sm font-semibold">
+                            التاريخ
+                          </th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-gray-200">
                         {paginatedTransactions.map((transaction) => {
-                          const transactionId = transaction._id || transaction.id || Math.random().toString()
+                          const transactionId =
+                            transaction._id ||
+                            transaction.id ||
+                            Math.random().toString();
                           const isDeposit =
                             transaction.type?.toLowerCase() === "deposit" ||
                             transaction.type?.toLowerCase() === "credit" ||
                             transaction.type?.toLowerCase() === "add" ||
                             transaction.type === "إيداع" ||
-                            transaction.amount > 0
+                            transaction.amount > 0;
 
                           const transactionDate = transaction.createdAt
-                            ? new Date(transaction.createdAt).toLocaleDateString("ar-SA", {
+                            ? new Date(
+                                transaction.createdAt
+                              ).toLocaleDateString("ar-SA", {
                                 year: "numeric",
                                 month: "long",
                                 day: "numeric",
                                 hour: "2-digit",
                                 minute: "2-digit",
                               })
-                            : "غير محدد"
+                            : "غير محدد";
 
                           return (
                             <motion.tr
@@ -1158,19 +1924,25 @@ export default function WalletsPage() {
                                   <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-blue-600 rounded-lg flex items-center justify-center text-white font-semibold text-sm">
                                     <User className="w-5 h-5" />
                                   </div>
-                                  <span className="font-medium text-gray-900">{transaction.customerName}</span>
+                                  <span className="font-medium text-gray-900">
+                                    {transaction.customerName}
+                                  </span>
                                 </div>
                               </td>
                               <td className="px-6 py-4">
                                 <div className="flex items-center gap-2 text-gray-600">
                                   <Mail className="w-4 h-4" />
-                                  <span className="text-sm">{transaction.customerEmail}</span>
+                                  <span className="text-sm">
+                                    {transaction.customerEmail}
+                                  </span>
                                 </div>
                               </td>
                               <td className="px-6 py-4">
                                 <div
                                   className={`inline-flex items-center gap-2 px-3 py-1 rounded-full text-sm font-semibold ${
-                                    isDeposit ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"
+                                    isDeposit
+                                      ? "bg-green-100 text-green-700"
+                                      : "bg-red-100 text-red-700"
                                   }`}
                                 >
                                   {isDeposit ? (
@@ -1187,13 +1959,24 @@ export default function WalletsPage() {
                                 </div>
                               </td>
                               <td className="px-6 py-4">
-                                <span className={`text-lg font-bold ${isDeposit ? "text-green-600" : "text-red-600"}`}>
+                                <span
+                                  className={`text-lg font-bold ${
+                                    isDeposit
+                                      ? "text-green-600"
+                                      : "text-red-600"
+                                  }`}
+                                >
                                   {isDeposit ? "+" : "-"}
-                                  {Math.abs(transaction.amount || 0).toLocaleString()} ر.س
+                                  {Math.abs(
+                                    transaction.amount || 0
+                                  ).toLocaleString()}{" "}
+                                  ر.س
                                 </span>
                               </td>
                               <td className="px-6 py-4">
-                                <span className="text-gray-600 text-sm">{transaction.description || "لا يوجد وصف"}</span>
+                                <span className="text-gray-600 text-sm">
+                                  {transaction.description || "لا يوجد وصف"}
+                                </span>
                               </td>
                               <td className="px-6 py-4">
                                 <span className="text-gray-900 font-semibold">
@@ -1205,11 +1988,13 @@ export default function WalletsPage() {
                               <td className="px-6 py-4">
                                 <div className="flex items-center gap-2 text-gray-600">
                                   <Calendar className="w-4 h-4" />
-                                  <span className="text-sm">{transactionDate}</span>
+                                  <span className="text-sm">
+                                    {transactionDate}
+                                  </span>
                                 </div>
                               </td>
                             </motion.tr>
-                          )
+                          );
                         })}
                       </tbody>
                     </table>
@@ -1235,24 +2020,38 @@ export default function WalletsPage() {
                   </button>
                 </div>
               ) : filteredWallets.length === 0 ? (
-                <div className="p-8 text-center text-gray-500">لا توجد محافظ</div>
+                <div className="p-8 text-center text-gray-500">
+                  لا توجد محافظ
+                </div>
               ) : (
                 <>
                   <div className="border-b border-gray-200 px-6 py-4 bg-gray-50">
                     <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
                       <div className="text-sm text-gray-600">
-                        عرض <span className="font-semibold text-gray-900">{walletsStartIndex + 1}</span> إلى{" "}
-                        <span className="font-semibold text-gray-900">{Math.min(walletsEndIndex, filteredWallets.length)}</span> من{" "}
-                        <span className="font-semibold text-gray-900">{filteredWallets.length}</span> محفظة
+                        عرض{" "}
+                        <span className="font-semibold text-gray-900">
+                          {walletsStartIndex + 1}
+                        </span>{" "}
+                        إلى{" "}
+                        <span className="font-semibold text-gray-900">
+                          {Math.min(walletsEndIndex, filteredWallets.length)}
+                        </span>{" "}
+                        من{" "}
+                        <span className="font-semibold text-gray-900">
+                          {filteredWallets.length}
+                        </span>{" "}
+                        محفظة
                       </div>
 
                       <div className="flex items-center gap-2">
-                        <label className="text-sm text-gray-600">عدد الصفوف:</label>
+                        <label className="text-sm text-gray-600">
+                          عدد الصفوف:
+                        </label>
                         <select
                           value={itemsPerPage}
                           onChange={(e) => {
-                            setItemsPerPage(Number(e.target.value))
-                            setCurrentPage(1)
+                            setItemsPerPage(Number(e.target.value));
+                            setCurrentPage(1);
                           }}
                           className="px-3 py-1.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-amber-500 focus:border-transparent"
                         >
@@ -1281,20 +2080,30 @@ export default function WalletsPage() {
                         </button>
 
                         <div className="flex items-center gap-1">
-                          {Array.from({ length: totalWalletsPages }, (_, i) => i + 1)
+                          {Array.from(
+                            { length: totalWalletsPages },
+                            (_, i) => i + 1
+                          )
                             .filter((page) => {
                               return (
                                 page === 1 ||
                                 page === totalWalletsPages ||
-                                (page >= currentPage - 1 && page <= currentPage + 1)
-                              )
+                                (page >= currentPage - 1 &&
+                                  page <= currentPage + 1)
+                              );
                             })
                             .map((page, index, array) => {
-                              const showEllipsis = index > 0 && page - array[index - 1] > 1
+                              const showEllipsis =
+                                index > 0 && page - array[index - 1] > 1;
                               return (
-                                <div key={page} className="flex items-center gap-1">
+                                <div
+                                  key={page}
+                                  className="flex items-center gap-1"
+                                >
                                   {showEllipsis && (
-                                    <span className="px-2 text-gray-500">...</span>
+                                    <span className="px-2 text-gray-500">
+                                      ...
+                                    </span>
                                   )}
                                   <button
                                     onClick={() => setCurrentPage(page)}
@@ -1307,7 +2116,7 @@ export default function WalletsPage() {
                                     {page}
                                   </button>
                                 </div>
-                              )
+                              );
                             })}
                         </div>
 
@@ -1333,36 +2142,61 @@ export default function WalletsPage() {
                     <table className="w-full">
                       <thead className="bg-gradient-to-r from-amber-500 to-orange-600 text-white">
                         <tr>
-                          <th className="px-6 py-4 text-right text-sm font-semibold">اسم العميل</th>
-                          <th className="px-6 py-4 text-right text-sm font-semibold">بريد العميل</th>
-                          <th className="px-6 py-4 text-right text-sm font-semibold">الرصيد</th>
-                          <th className="px-6 py-4 text-right text-sm font-semibold">عدد المعاملات</th>
-                          <th className="px-6 py-4 text-right text-sm font-semibold">تاريخ الإنشاء</th>
-                          <th className="px-6 py-4 text-right text-sm font-semibold">آخر تحديث</th>
-                          <th className="px-6 py-4 text-right text-sm font-semibold">الإجراءات</th>
+                          <th className="px-6 py-4 text-right text-sm font-semibold">
+                            اسم العميل
+                          </th>
+                          <th className="px-6 py-4 text-right text-sm font-semibold">
+                            بريد العميل
+                          </th>
+                          <th className="px-6 py-4 text-right text-sm font-semibold">
+                            الرصيد
+                          </th>
+                          <th className="px-6 py-4 text-right text-sm font-semibold">
+                            عدد المعاملات
+                          </th>
+                          <th className="px-6 py-4 text-right text-sm font-semibold">
+                            تاريخ الإنشاء
+                          </th>
+                          <th className="px-6 py-4 text-right text-sm font-semibold">
+                            آخر تحديث
+                          </th>
+                          <th className="px-6 py-4 text-right text-sm font-semibold">
+                            الإجراءات
+                          </th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-gray-200">
                         {paginatedWallets.map((wallet) => {
-                          const walletId = wallet._id || wallet.id || "غير محدد"
-                          const customerName = wallet.customerName || "غير معروف"
-                          const customerEmail = wallet.customerEmail || "غير متوفر"
-                          const walletBalance = wallet.balance || 0
-                          const transactionsCount = txCountByCustomer.get(String(wallet.customerId)) || 0
+                          const walletId =
+                            wallet._id || wallet.id || "غير محدد";
+                          const customerName =
+                            wallet.customerName || "غير معروف";
+                          const customerEmail =
+                            wallet.customerEmail || "غير متوفر";
+                          const walletBalance = wallet.balance || 0;
+                          const transactionsCount =
+                            txCountByCustomer.get(String(wallet.customerId)) ||
+                            0;
                           const createdAt = wallet.createdAt
-                            ? new Date(wallet.createdAt).toLocaleDateString("ar-SA", {
-                                year: "numeric",
-                                month: "long",
-                                day: "numeric",
-                              })
-                            : "غير محدد"
+                            ? new Date(wallet.createdAt).toLocaleDateString(
+                                "ar-SA",
+                                {
+                                  year: "numeric",
+                                  month: "long",
+                                  day: "numeric",
+                                }
+                              )
+                            : "غير محدد";
                           const updatedAt = wallet.updatedAt
-                            ? new Date(wallet.updatedAt).toLocaleDateString("ar-SA", {
-                                year: "numeric",
-                                month: "long",
-                                day: "numeric",
-                              })
-                            : "غير محدد"
+                            ? new Date(wallet.updatedAt).toLocaleDateString(
+                                "ar-SA",
+                                {
+                                  year: "numeric",
+                                  month: "long",
+                                  day: "numeric",
+                                }
+                              )
+                            : "غير محدد";
 
                           return (
                             <motion.tr
@@ -1376,24 +2210,33 @@ export default function WalletsPage() {
                                   <div className="w-10 h-10 bg-gradient-to-br from-amber-500 to-orange-600 rounded-lg flex items-center justify-center text-white font-semibold text-sm">
                                     <User className="w-5 h-5" />
                                   </div>
-                                  <span className="font-medium text-gray-900">{customerName}</span>
+                                  <span className="font-medium text-gray-900">
+                                    {customerName}
+                                  </span>
                                 </div>
                               </td>
                               <td className="px-6 py-4">
                                 <div className="flex items-center gap-2 text-gray-600">
                                   <Mail className="w-4 h-4" />
-                                  <span className="text-sm">{customerEmail}</span>
+                                  <span className="text-sm">
+                                    {customerEmail}
+                                  </span>
                                 </div>
                               </td>
                               <td className="px-6 py-4">
                                 <span className="text-lg font-bold text-gray-900">
-                                  {walletBalance.toLocaleString(undefined, { maximumFractionDigits: 2 })} ر.س
+                                  {walletBalance.toLocaleString(undefined, {
+                                    maximumFractionDigits: 2,
+                                  })}{" "}
+                                  ر.س
                                 </span>
                               </td>
                               <td className="px-6 py-4">
                                 <div className="flex items-center gap-2">
                                   <History className="w-4 h-4 text-blue-500" />
-                                  <span className="text-blue-600 font-semibold">{transactionsCount}</span>
+                                  <span className="text-blue-600 font-semibold">
+                                    {transactionsCount}
+                                  </span>
                                 </div>
                               </td>
                               <td className="px-6 py-4">
@@ -1413,7 +2256,11 @@ export default function WalletsPage() {
                                   <motion.button
                                     whileHover={{ scale: 1.05 }}
                                     whileTap={{ scale: 0.95 }}
-                                    onClick={() => openUserWalletDetails(String(wallet.customerId))}
+                                    onClick={() =>
+                                      openUserWalletDetails(
+                                        String(wallet.customerId)
+                                      )
+                                    }
                                     className="px-4 py-2 bg-amber-100 text-amber-700 rounded-lg hover:bg-amber-200 transition-colors font-medium text-sm"
                                   >
                                     عرض التفاصيل
@@ -1423,9 +2270,11 @@ export default function WalletsPage() {
                                       whileHover={{ scale: 1.05 }}
                                       whileTap={{ scale: 0.95 }}
                                       onClick={() => {
-                                        setTransactionsUserFilter(String(wallet.customerId))
-                                        setShowTransactions(true)
-                                        setCurrentTransactionsPage(1)
+                                        setTransactionsUserFilter(
+                                          String(wallet.customerId)
+                                        );
+                                        setShowTransactions(true);
+                                        setCurrentTransactionsPage(1);
                                       }}
                                       className="px-4 py-2 bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200 transition-colors font-medium text-sm"
                                     >
@@ -1435,7 +2284,7 @@ export default function WalletsPage() {
                                 </div>
                               </td>
                             </motion.tr>
-                          )
+                          );
                         })}
                       </tbody>
                     </table>
@@ -1446,7 +2295,11 @@ export default function WalletsPage() {
           )}
         </motion.div>
         {detailsOpen && selectedTransfer && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" role="dialog" aria-modal>
+          <div
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+            role="dialog"
+            aria-modal
+          >
             <div className="bg-white w-full max-w-4xl rounded-2xl shadow-2xl overflow-hidden">
               <div className="bg-gradient-to-r from-purple-600 to-purple-700 px-6 py-5 flex items-center justify-between">
                 <div className="flex items-center gap-3">
@@ -1454,11 +2307,22 @@ export default function WalletsPage() {
                     <Building2 className="w-6 h-6 text-white" />
                   </div>
                   <div>
-                    <h3 className="text-xl font-bold text-white">تفاصيل التحويل البنكي</h3>
-                    <p className="text-purple-100 text-sm">طلب رقم: {selectedTransfer._id}</p>
+                    <h3 className="text-xl font-bold text-white">
+                      تفاصيل التحويل البنكي
+                    </h3>
+                    <p className="text-purple-100 text-sm">
+                      طلب رقم: {selectedTransfer._id}
+                    </p>
                   </div>
                 </div>
-                <button onClick={() => { setDetailsOpen(false); setSelectedTransfer(null); setActionNote("") }} className="p-2 hover:bg-white/10 rounded-lg transition-colors">
+                <button
+                  onClick={() => {
+                    setDetailsOpen(false);
+                    setSelectedTransfer(null);
+                    setActionNote("");
+                  }}
+                  className="p-2 hover:bg-white/10 rounded-lg transition-colors"
+                >
                   <XCircle className="w-6 h-6 text-white" />
                 </button>
               </div>
@@ -1471,37 +2335,80 @@ export default function WalletsPage() {
                         <User className="w-6 h-6" />
                       </div>
                       <div>
-                        <p className="font-medium text-gray-900">{selectedTransfer.customerName}</p>
-                        <p className="text-sm text-gray-600 flex items-center gap-1"><Mail className="w-4 h-4" />{selectedTransfer.customerEmail}</p>
+                        <p className="font-medium text-gray-900">
+                          {selectedTransfer.customerName}
+                        </p>
+                        <p className="text-sm text-gray-600 flex items-center gap-1">
+                          <Mail className="w-4 h-4" />
+                          {selectedTransfer.customerEmail}
+                        </p>
                       </div>
                     </div>
                     <div className="mt-4 text-sm text-gray-600 space-y-2">
-                      <div className="flex items-center gap-2"><DollarSign className="w-4 h-4 text-purple-600" />
-                        <span className="font-semibold text-gray-900">{selectedTransfer.amount.toLocaleString()} ر.س</span>
+                      <div className="flex items-center gap-2">
+                        <DollarSign className="w-4 h-4 text-purple-600" />
+                        <span className="font-semibold text-gray-900">
+                          {selectedTransfer.amount.toLocaleString()} ر.س
+                        </span>
                       </div>
-                      <div className="flex items-center gap-2"><Clock className="w-4 h-4 text-gray-500" />
-                        <span>{new Date(selectedTransfer.createdAt).toLocaleString("ar-SA")}</span>
+                      <div className="flex items-center gap-2">
+                        <Clock className="w-4 h-4 text-gray-500" />
+                        <span>
+                          {new Date(selectedTransfer.createdAt).toLocaleString(
+                            "ar-SA"
+                          )}
+                        </span>
                       </div>
                       <div>
                         <span className="text-gray-500">الحالة:</span>{" "}
-                        <span className={`px-2 py-1 rounded-full text-xs font-semibold ${selectedTransfer.status === 'completed' ? 'bg-green-100 text-green-700' : selectedTransfer.status === 'rejected' ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-700'}`}>{selectedTransfer.status}</span>
+                        <span
+                          className={`px-2 py-1 rounded-full text-xs font-semibold ${
+                            selectedTransfer.status === "completed"
+                              ? "bg-green-100 text-green-700"
+                              : selectedTransfer.status === "rejected"
+                              ? "bg-red-100 text-red-700"
+                              : "bg-amber-100 text-amber-700"
+                          }`}
+                        >
+                          {selectedTransfer.status}
+                        </span>
                       </div>
                     </div>
                   </div>
                   <div className="bg-white border rounded-xl p-4">
-                    <h4 className="font-semibold text-gray-900 mb-3">ملاحظات الإجراء</h4>
-                    <textarea value={actionNote} onChange={(e) => setActionNote(e.target.value)} placeholder="اكتب ملاحظة للموافقة/الرفض (اختياري)" className="w-full border rounded-lg p-2 h-24 focus:ring-2 focus:ring-purple-500 focus:outline-none" />
+                    <h4 className="font-semibold text-gray-900 mb-3">
+                      ملاحظات الإجراء
+                    </h4>
+                    <textarea
+                      value={actionNote}
+                      onChange={(e) => setActionNote(e.target.value)}
+                      placeholder="اكتب ملاحظة للموافقة/الرفض (اختياري)"
+                      className="w-full border rounded-lg p-2 h-24 focus:ring-2 focus:ring-purple-500 focus:outline-none"
+                    />
                     <div className="mt-3 flex gap-2">
                       <button
-                        disabled={transferActionLoading === selectedTransfer._id}
-                        onClick={() => handleApproveTransfer(selectedTransfer._id, actionNote)}
-                        className="flex-1 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50">
+                        disabled={
+                          transferActionLoading === selectedTransfer._id
+                        }
+                        onClick={() =>
+                          handleApproveTransfer(
+                            selectedTransfer._id,
+                            actionNote
+                          )
+                        }
+                        className="flex-1 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50"
+                      >
                         موافقة
                       </button>
                       <button
-                        disabled={transferActionLoading === selectedTransfer._id}
-                        onClick={() => handleRejectTransfer(selectedTransfer._id, actionNote)}
-                        className="flex-1 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50">
+                        disabled={
+                          transferActionLoading === selectedTransfer._id
+                        }
+                        onClick={() =>
+                          handleRejectTransfer(selectedTransfer._id, actionNote)
+                        }
+                        className="flex-1 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50"
+                      >
                         رفض
                       </button>
                     </div>
@@ -1509,30 +2416,46 @@ export default function WalletsPage() {
                 </div>
                 <div className="lg:col-span-2 space-y-4">
                   <div className="bg-white border rounded-xl p-4">
-                    <h4 className="font-semibold text-gray-900 mb-3">معلومات الحساب البنكي</h4>
+                    <h4 className="font-semibold text-gray-900 mb-3">
+                      معلومات الحساب البنكي
+                    </h4>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
                       <div>
                         <p className="text-gray-500">البنك</p>
-                        <p className="font-medium text-gray-900">{selectedTransfer.bankName || 'غير متوفر'}</p>
+                        <p className="font-medium text-gray-900">
+                          {selectedTransfer.bankName || "غير متوفر"}
+                        </p>
                       </div>
                       <div>
                         <p className="text-gray-500">رقم الحساب</p>
-                        <p className="font-mono font-medium text-gray-900">{selectedTransfer.accountNumber || 'غير متوفر'}</p>
+                        <p className="font-mono font-medium text-gray-900">
+                          {selectedTransfer.accountNumber || "غير متوفر"}
+                        </p>
                       </div>
                       <div>
                         <p className="text-gray-500">اسم صاحب الحساب</p>
-                        <p className="font-medium text-gray-900">{selectedTransfer.accountHolder || 'غير متوفر'}</p>
+                        <p className="font-medium text-gray-900">
+                          {selectedTransfer.accountHolder || "غير متوفر"}
+                        </p>
                       </div>
                     </div>
                   </div>
                   <div className="bg-white border rounded-xl p-4">
-                    <h4 className="font-semibold text-gray-900 mb-3">إيصال التحويل</h4>
+                    <h4 className="font-semibold text-gray-900 mb-3">
+                      إيصال التحويل
+                    </h4>
                     {selectedTransfer.bankReceipt ? (
                       <div className="rounded-xl overflow-hidden border">
-                        <img src={selectedTransfer.bankReceipt} alt="Bank Receipt" className="w-full max-h-[520px] object-contain bg-gray-50" />
+                        <img
+                          src={selectedTransfer.bankReceipt}
+                          alt="Bank Receipt"
+                          className="w-full max-h-[520px] object-contain bg-gray-50"
+                        />
                       </div>
                     ) : (
-                      <p className="text-sm text-gray-600">لا يوجد إيصال مرفق</p>
+                      <p className="text-sm text-gray-600">
+                        لا يوجد إيصال مرفق
+                      </p>
                     )}
                   </div>
                 </div>
@@ -1553,11 +2476,21 @@ export default function WalletsPage() {
                     <Wallet className="w-6 h-6 text-white" />
                   </div>
                   <div>
-                    <h3 className="text-xl font-bold text-white">تفاصيل محفظة المستخدم</h3>
-                    <p className="text-amber-100 text-sm">عرض معلومات العميل وآخر المعاملات</p>
+                    <h3 className="text-xl font-bold text-white">
+                      تفاصيل محفظة المستخدم
+                    </h3>
+                    <p className="text-amber-100 text-sm">
+                      عرض معلومات العميل وآخر المعاملات
+                    </p>
                   </div>
                 </div>
-                <button onClick={() => { setWalletDetailsOpen(false); setSelectedUserWallet(null) }} className="p-2 hover:bg-white/10 rounded-lg transition-colors">
+                <button
+                  onClick={() => {
+                    setWalletDetailsOpen(false);
+                    setSelectedUserWallet(null);
+                  }}
+                  className="p-2 hover:bg-white/10 rounded-lg transition-colors"
+                >
                   <XCircle className="w-6 h-6 text-white" />
                 </button>
               </div>
@@ -1566,9 +2499,13 @@ export default function WalletsPage() {
                   <div className="bg-white border rounded-xl p-4">
                     <h4 className="font-semibold text-gray-900 mb-3">العميل</h4>
                     {walletDetailsLoading ? (
-                      <div className="py-8 flex items-center justify-center"><Loader2 className="w-6 h-6 text-amber-600 animate-spin" /></div>
+                      <div className="py-8 flex items-center justify-center">
+                        <Loader2 className="w-6 h-6 text-amber-600 animate-spin" />
+                      </div>
                     ) : walletDetailsError ? (
-                      <div className="text-red-600 text-sm">{walletDetailsError}</div>
+                      <div className="text-red-600 text-sm">
+                        {walletDetailsError}
+                      </div>
                     ) : (
                       <>
                         <div className="flex items-center gap-3">
@@ -1576,28 +2513,48 @@ export default function WalletsPage() {
                             <User className="w-6 h-6" />
                           </div>
                           <div>
-                            <p className="font-medium text-gray-900">{selectedUserWallet?.user?.name || '-'}</p>
-                            <p className="text-sm text-gray-600 flex items-center gap-1"><Mail className="w-4 h-4" />{selectedUserWallet?.user?.email || 'غير متوفر'}</p>
+                            <p className="font-medium text-gray-900">
+                              {selectedUserWallet?.user?.name || "-"}
+                            </p>
+                            <p className="text-sm text-gray-600 flex items-center gap-1">
+                              <Mail className="w-4 h-4" />
+                              {selectedUserWallet?.user?.email || "غير متوفر"}
+                            </p>
                           </div>
                         </div>
                         <div className="mt-4 text-sm text-gray-600 space-y-2">
-                          <div className="flex items-center gap-2"><DollarSign className="w-4 h-4 text-amber-600" />
-                            <span className="font-semibold text-gray-900">{Number(selectedUserWallet?.wallet?.balance || 0).toLocaleString()} ر.س</span>
+                          <div className="flex items-center gap-2">
+                            <DollarSign className="w-4 h-4 text-amber-600" />
+                            <span className="font-semibold text-gray-900">
+                              {Number(
+                                selectedUserWallet?.wallet?.balance || 0
+                              ).toLocaleString()}{" "}
+                              ر.س
+                            </span>
                           </div>
-                          <div className="flex items-center gap-2"><Clock className="w-4 h-4 text-gray-500" />
-                            <span>الحالة: {selectedUserWallet?.user?.active ? 'نشط' : 'غير نشط'}</span>
+                          <div className="flex items-center gap-2">
+                            <Clock className="w-4 h-4 text-gray-500" />
+                            <span>
+                              الحالة:{" "}
+                              {selectedUserWallet?.user?.active
+                                ? "نشط"
+                                : "غير نشط"}
+                            </span>
                           </div>
                           <div className="flex gap-2">
                             <button
                               onClick={() => {
                                 if (selectedUserWallet?.user?.id) {
-                                  setTransactionsUserFilter(String(selectedUserWallet.user.id))
-                                  setShowTransactions(true)
-                                  setCurrentTransactionsPage(1)
-                                  setWalletDetailsOpen(false)
+                                  setTransactionsUserFilter(
+                                    String(selectedUserWallet.user.id)
+                                  );
+                                  setShowTransactions(true);
+                                  setCurrentTransactionsPage(1);
+                                  setWalletDetailsOpen(false);
                                 }
                               }}
-                              className="px-3 py-2 text-sm rounded-lg bg-blue-100 text-blue-700 hover:bg-blue-200">
+                              className="px-3 py-2 text-sm rounded-lg bg-blue-100 text-blue-700 hover:bg-blue-200"
+                            >
                               عرض معاملات هذا المستخدم
                             </button>
                           </div>
@@ -1608,11 +2565,17 @@ export default function WalletsPage() {
                 </div>
                 <div className="lg:col-span-2 space-y-4">
                   <div className="bg-white border rounded-xl p-4 h-full flex flex-col">
-                    <h4 className="font-semibold text-gray-900 mb-3">آخر المعاملات</h4>
+                    <h4 className="font-semibold text-gray-900 mb-3">
+                      آخر المعاملات
+                    </h4>
                     {walletDetailsLoading ? (
-                      <div className="py-8 flex items-center justify-center"><Loader2 className="w-6 h-6 text-amber-600 animate-spin" /></div>
+                      <div className="py-8 flex items-center justify-center">
+                        <Loader2 className="w-6 h-6 text-amber-600 animate-spin" />
+                      </div>
                     ) : walletDetailsError ? (
-                      <div className="text-red-600 text-sm">{walletDetailsError}</div>
+                      <div className="text-red-600 text-sm">
+                        {walletDetailsError}
+                      </div>
                     ) : (
                       <div className="overflow-x-auto flex-1">
                         <table className="w-full min-w-max">
@@ -1625,25 +2588,58 @@ export default function WalletsPage() {
                             </tr>
                           </thead>
                           <tbody className="divide-y divide-gray-100">
-                            {(selectedUserWallet?.transactions || []).map((t: any) => {
-                              const isDeposit = String(t.type || '').toLowerCase() === 'credit' || Number(t.amount) > 0
-                              return (
-                                <tr key={String(t._id)} className="hover:bg-gray-50/80">
-                                  <td className="px-4 py-3">
-                                    <span className={`px-2 py-1 rounded-full text-xs font-semibold ${isDeposit ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>{isDeposit ? 'إيداع' : 'خصم'}</span>
-                                  </td>
-                                  <td className="px-4 py-3">
-                                    <span className={`font-bold ${isDeposit ? 'text-green-700' : 'text-red-700'}`}>{Number(t.amount || 0).toLocaleString()} ر.س</span>
-                                  </td>
-                                  <td className="px-4 py-3 text-sm text-gray-600">{t.description || '-'}</td>
-                                  <td className="px-4 py-3 text-sm text-gray-600">{new Date(t.createdAt).toLocaleString('ar-SA')}</td>
-                                </tr>
-                              )
-                            })}
+                            {(selectedUserWallet?.transactions || []).map(
+                              (t: any) => {
+                                const isDeposit =
+                                  String(t.type || "").toLowerCase() ===
+                                    "credit" || Number(t.amount) > 0;
+                                return (
+                                  <tr
+                                    key={String(t._id)}
+                                    className="hover:bg-gray-50/80"
+                                  >
+                                    <td className="px-4 py-3">
+                                      <span
+                                        className={`px-2 py-1 rounded-full text-xs font-semibold ${
+                                          isDeposit
+                                            ? "bg-green-100 text-green-700"
+                                            : "bg-red-100 text-red-700"
+                                        }`}
+                                      >
+                                        {isDeposit ? "إيداع" : "خصم"}
+                                      </span>
+                                    </td>
+                                    <td className="px-4 py-3">
+                                      <span
+                                        className={`font-bold ${
+                                          isDeposit
+                                            ? "text-green-700"
+                                            : "text-red-700"
+                                        }`}
+                                      >
+                                        {Number(t.amount || 0).toLocaleString()}{" "}
+                                        ر.س
+                                      </span>
+                                    </td>
+                                    <td className="px-4 py-3 text-sm text-gray-600">
+                                      {t.description || "-"}
+                                    </td>
+                                    <td className="px-4 py-3 text-sm text-gray-600">
+                                      {new Date(t.createdAt).toLocaleString(
+                                        "ar-SA"
+                                      )}
+                                    </td>
+                                  </tr>
+                                );
+                              }
+                            )}
                           </tbody>
                         </table>
-                        {(!selectedUserWallet?.transactions || selectedUserWallet.transactions.length === 0) && (
-                          <div className="p-6 text-center text-gray-500">لا توجد معاملات</div>
+                        {(!selectedUserWallet?.transactions ||
+                          selectedUserWallet.transactions.length === 0) && (
+                          <div className="p-6 text-center text-gray-500">
+                            لا توجد معاملات
+                          </div>
                         )}
                       </div>
                     )}
@@ -1653,7 +2649,228 @@ export default function WalletsPage() {
             </div>
           </div>
         )}
+        {moyasarPaymentDetailsOpen && selectedMoyasarPayment && (
+          <div
+            className="fixed inset-0 z-50 flex items-start justify-center bg-black/40 p-4 overflow-y-auto"
+            role="dialog"
+            aria-modal
+          >
+            <div className="bg-white w-full max-w-5xl rounded-2xl shadow-2xl flex flex-col max-h-[90vh] overflow-hidden">
+              <div className="bg-gradient-to-r from-green-600 to-green-700 px-6 py-5 flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="w-12 h-12 bg-white/20 rounded-xl flex items-center justify-center">
+                    <CreditCard className="w-6 h-6 text-white" />
+                  </div>
+                  <div>
+                    <h3 className="text-xl font-bold text-white">
+                      تفاصيل الدفعة من Moyasar
+                    </h3>
+                    <p className="text-green-100 text-sm">
+                      ID الدفعة: {selectedMoyasarPayment.moyasarPaymentId}
+                    </p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => {
+                    setMoyasarPaymentDetailsOpen(false);
+                    setSelectedMoyasarPayment(null);
+                  }}
+                  className="p-2 hover:bg-white/10 rounded-lg transition-colors"
+                >
+                  <XCircle className="w-6 h-6 text-white" />
+                </button>
+              </div>
+              <div className="p-6 grid grid-cols-1 lg:grid-cols-3 gap-6">
+                <div className="lg:col-span-1 space-y-4">
+                  <div className="bg-white border rounded-xl p-4">
+                    <h4 className="font-semibold text-gray-900 mb-3">
+                      معلومات العميل
+                    </h4>
+                    <div className="flex items-center gap-3">
+                      <div className="w-12 h-12 bg-gradient-to-br from-green-500 to-green-600 rounded-lg flex items-center justify-center text-white">
+                        <User className="w-6 h-6" />
+                      </div>
+                      <div>
+                        <p className="font-medium text-gray-900">
+                          {selectedMoyasarPayment.customerName}
+                        </p>
+                        <p className="text-sm text-gray-600 flex items-center gap-1">
+                          <Mail className="w-4 h-4" />
+                          {selectedMoyasarPayment.customerEmail}
+                        </p>
+                        <p className="text-sm text-gray-600">
+                          {selectedMoyasarPayment.customerPhone}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="mt-4 text-sm text-gray-600 space-y-2">
+                      <div className="flex items-center gap-2">
+                        <DollarSign className="w-4 h-4 text-green-600" />
+                        <span className="font-semibold text-gray-900">
+                          {selectedMoyasarPayment.amount.toLocaleString()} ر.س
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Clock className="w-4 h-4 text-gray-500" />
+                        <span>
+                          {new Date(
+                            selectedMoyasarPayment.createdAt
+                          ).toLocaleString("ar-SA")}
+                        </span>
+                      </div>
+                      <div>
+                        <span className="text-gray-500">الحالة:</span>{" "}
+                        <span
+                          className={`px-2 py-1 rounded-full text-xs font-semibold ${
+                            selectedMoyasarPayment.status === "completed"
+                              ? "bg-green-100 text-green-700"
+                              : selectedMoyasarPayment.status === "failed"
+                              ? "bg-red-100 text-red-700"
+                              : "bg-amber-100 text-amber-700"
+                          }`}
+                        >
+                          {selectedMoyasarPayment.status === "completed"
+                            ? "ناجح"
+                            : selectedMoyasarPayment.status === "failed"
+                            ? "فاشل"
+                            : selectedMoyasarPayment.status}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="bg-white border rounded-xl p-4">
+                    <h4 className="font-semibold text-gray-900 mb-3">
+                      معلومات المحفظة
+                    </h4>
+                    <div className="text-sm text-gray-600 space-y-2">
+                      <div className="flex items-center justify-between">
+                        <span>رصيد المحفظة الحالي:</span>
+                        <span className="font-semibold text-gray-900">
+                          {selectedMoyasarPayment.walletBalance.toLocaleString()}{" "}
+                          ر.س
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span>ID المحفظة:</span>
+                        <span className="font-mono text-xs">
+                          {selectedMoyasarPayment.walletId}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <div className="lg:col-span-2 space-y-4">
+                  <div className="bg-white border rounded-xl p-4">
+                    <h4 className="font-semibold text-gray-900 mb-3">
+                      تفاصيل الدفعة من Moyasar
+                    </h4>
+                    {selectedMoyasarPayment.moyasarDetails ? (
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+                        <div>
+                          <p className="text-gray-500">ID الدفعة</p>
+                          <p className="font-mono font-medium text-gray-900">
+                            {selectedMoyasarPayment.moyasarDetails.id}
+                          </p>
+                        </div>
+                        <div>
+                          <p className="text-gray-500">الحالة</p>
+                          <p
+                            className={`font-medium ${
+                              selectedMoyasarPayment.moyasarDetails.status ===
+                              "paid"
+                                ? "text-green-600"
+                                : selectedMoyasarPayment.moyasarDetails
+                                    .status === "failed"
+                                ? "text-red-600"
+                                : "text-amber-600"
+                            }`}
+                          >
+                            {selectedMoyasarPayment.moyasarDetails.status ===
+                            "paid"
+                              ? "مدفوع"
+                              : selectedMoyasarPayment.moyasarDetails.status ===
+                                "failed"
+                              ? "فاشل"
+                              : selectedMoyasarPayment.moyasarDetails.status}
+                          </p>
+                        </div>
+                        <div>
+                          <p className="text-gray-500">المبلغ</p>
+                          <p className="font-medium text-gray-900">
+                            {(
+                              selectedMoyasarPayment.moyasarDetails.amount / 100
+                            ).toLocaleString()}{" "}
+                            {selectedMoyasarPayment.moyasarDetails.currency}
+                          </p>
+                        </div>
+                        <div>
+                          <p className="text-gray-500">الوصف</p>
+                          <p className="font-medium text-gray-900">
+                            {selectedMoyasarPayment.moyasarDetails
+                              .description || "غير محدد"}
+                          </p>
+                        </div>
+                        <div>
+                          <p className="text-gray-500">تاريخ الإنشاء</p>
+                          <p className="font-medium text-gray-900">
+                            {new Date(
+                              selectedMoyasarPayment.moyasarDetails.created_at
+                            ).toLocaleString("ar-SA")}
+                          </p>
+                        </div>
+                        <div>
+                          <p className="text-gray-500">تاريخ التحديث</p>
+                          <p className="font-medium text-gray-900">
+                            {new Date(
+                              selectedMoyasarPayment.moyasarDetails.updated_at
+                            ).toLocaleString("ar-SA")}
+                          </p>
+                        </div>
+                      </div>
+                    ) : (
+                      <p className="text-sm text-gray-600">
+                        تعذر جلب التفاصيل من API Moyasar
+                      </p>
+                    )}
+                  </div>
+                  {selectedMoyasarPayment.moyasarDetails?.source && (
+                    <div className="bg-white border rounded-xl p-4">
+                      <h4 className="font-semibold text-gray-900 mb-3">
+                        معلومات الدفع
+                      </h4>
+                      <div className="text-sm text-gray-600">
+                        <pre className="bg-gray-50 p-3 rounded-lg overflow-x-auto text-xs">
+                          {JSON.stringify(
+                            selectedMoyasarPayment.moyasarDetails.source,
+                            null,
+                            2
+                          )}
+                        </pre>
+                      </div>
+                    </div>
+                  )}
+                  {selectedMoyasarPayment.moyasarDetails?.metadata && (
+                    <div className="bg-white border rounded-xl p-4">
+                      <h4 className="font-semibold text-gray-900 mb-3">
+                        البيانات الإضافية (Metadata)
+                      </h4>
+                      <div className="text-sm text-gray-600">
+                        <pre className="bg-gray-50 p-3 rounded-lg overflow-x-auto text-xs">
+                          {JSON.stringify(
+                            selectedMoyasarPayment.moyasarDetails.metadata,
+                            null,
+                            2
+                          )}
+                        </pre>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </DashboardLayout>
-  )
+  );
 }
