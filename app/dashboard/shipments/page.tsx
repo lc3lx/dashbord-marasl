@@ -18,6 +18,7 @@ import {
   RefreshCw,
   RotateCcw,
   Mail,
+  CreditCard,
   ChevronLeft,
   ChevronRight,
 } from "lucide-react"
@@ -134,11 +135,13 @@ export default function ShipmentsPage() {
   const [searchTerm, setSearchTerm] = useState("")
   const [debouncedSearch, setDebouncedSearch] = useState("")
   const [statusFilter, setStatusFilter] = useState<string>("all")
+  const [paymentFilter, setPaymentFilter] = useState<string>("all")
   const [selectedShipment, setSelectedShipment] = useState<Shipment | null>(null)
   const [showDetailsModal, setShowDetailsModal] = useState(false)
   const [showEditModal, setShowEditModal] = useState(false)
   const [showDeleteModal, setShowDeleteModal] = useState(false)
   const [editStatus, setEditStatus] = useState("")
+  const [cancelNotes, setCancelNotes] = useState("")
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [isRefreshing, setIsRefreshing] = useState(false)
   const [currentPage, setCurrentPage] = useState(1)
@@ -151,14 +154,15 @@ export default function ShipmentsPage() {
 
   useEffect(() => {
     setCurrentPage(1)
-  }, [debouncedSearch, statusFilter])
+  }, [debouncedSearch, statusFilter, paymentFilter])
 
   const { data, error, isLoading, mutate, isValidating } = useSWR(
-    ["admin-shipments", currentPage, itemsPerPage, debouncedSearch, statusFilter],
-    async ([, page, limit, search, status]) => {
+    ["admin-shipments", currentPage, itemsPerPage, debouncedSearch, statusFilter, paymentFilter],
+    async ([, page, limit, search, status, payment]) => {
       const params: Record<string, any> = { page, limit }
       if (search) params.search = search
       if (status !== "all") params.status = status
+      if (payment !== "all") params.paymentMethod = payment
       return adminShipmentsAPI.getAll(params)
     },
     {
@@ -210,6 +214,7 @@ export default function ShipmentsPage() {
 
   const handleDeleteShipment = (shipment: Shipment) => {
     setSelectedShipment(shipment)
+    setCancelNotes("")
     setShowDeleteModal(true)
   }
 
@@ -239,40 +244,22 @@ export default function ShipmentsPage() {
 
     setIsSubmitting(true)
     try {
-      const token = typeof window !== "undefined" ? localStorage.getItem("authToken") : null
-      const headers: Record<string, string> = {
-        "Content-Type": "application/json",
-      }
-      if (token) {
-        headers["x-auth-token"] = token
-        headers["Authorization"] = `Bearer ${token}`
-      }
-
-      const response = await fetch(`/api/proxy/api/admin/shipments/${selectedShipment._id}`, {
-        method: "DELETE",
-        headers,
-        credentials: "include",
-      })
-
-      if (response.ok) {
-        await mutate()
-        setShowDeleteModal(false)
-        setSelectedShipment(null)
-      } else {
-        const error = await response.json()
-        alert(error.message || "فشل في حذف الشحنة")
-      }
+      await adminShipmentsAPI.updateStatus(selectedShipment._id, "Canceled", cancelNotes.trim() || undefined)
+      await mutate()
+      setShowDeleteModal(false)
+      setSelectedShipment(null)
+      setCancelNotes("")
     } catch (error) {
-      console.error("Error deleting shipment:", error)
-      alert("حدث خطأ أثناء حذف الشحنة")
+      console.error("Error canceling shipment:", error)
+      alert("حدث خطأ أثناء إلغاء الشحنة")
     } finally {
       setIsSubmitting(false)
     }
   }
 
   const getStatusBadge = (status?: string) => {
-    const normalized = status?.toUpperCase() || "PENDING"
-    const config = statusMeta[normalized] || statusMeta["PENDING"]
+    const normalized = resolveStatusKey(status)
+    const config = statusMeta[normalized] || statusMeta["UNKNOWN"]
     const Icon = config.icon
 
     return (
@@ -335,19 +322,33 @@ export default function ShipmentsPage() {
                   className="w-full pr-12 pl-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
                 />
               </div>
-              <div className="flex items-center gap-2">
-                <Filter className="text-gray-400 w-5 h-5" />
-                <select
-                  value={statusFilter}
-                  onChange={(e) => setStatusFilter(e.target.value)}
-                  className="px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
-                >
-                  {filterStatusOptions.map((option) => (
-                    <option key={option.value} value={option.value}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
+              <div className="flex flex-col sm:flex-row gap-2">
+                <div className="flex items-center gap-2">
+                  <Filter className="text-gray-400 w-5 h-5" />
+                  <select
+                    value={statusFilter}
+                    onChange={(e) => setStatusFilter(e.target.value)}
+                    className="px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
+                  >
+                    {filterStatusOptions.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="flex items-center gap-2">
+                  <CreditCard className="text-gray-400 w-5 h-5" />
+                  <select
+                    value={paymentFilter}
+                    onChange={(e) => setPaymentFilter(e.target.value)}
+                    className="px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
+                  >
+                    <option value="all">كل طرق الدفع</option>
+                    <option value="Prepaid">مدفوع مسبقًا</option>
+                    <option value="COD">دفع عند الاستلام</option>
+                  </select>
+                </div>
               </div>
             </div>
           </div>
@@ -574,7 +575,7 @@ export default function ShipmentsPage() {
                               <span className="text-sm">{customerEmail}</span>
                             </div>
                           </td>
-                          <td className="px-6 py-4">{getStatusBadge(shipment.status)}</td>
+                          <td className="px-6 py-4">{getStatusBadge(resolveStatusValue(shipment))}</td>
                           <td className="px-6 py-4">
                             <span className="text-sm font-semibold text-gray-700">
                               {orderValue.toFixed(2)} ر.س
@@ -690,7 +691,7 @@ export default function ShipmentsPage() {
                     </div>
                     <div className="bg-gray-50 p-4 rounded-xl">
                       <p className="text-sm text-gray-500 mb-1">الحالة</p>
-                      <div className="mt-2">{getStatusBadge(selectedShipment.status)}</div>
+                      <div className="mt-2">{getStatusBadge(resolveStatusValue(selectedShipment))}</div>
                     </div>
                     <div className="bg-gray-50 p-4 rounded-xl">
                       <p className="text-sm text-gray-500 mb-1">قيمة الطلب</p>
@@ -756,13 +757,11 @@ export default function ShipmentsPage() {
                       onChange={(e) => setEditStatus(e.target.value)}
                       className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
                     >
-                      {statusOptions
-                        .filter((option) => option.value !== "all")
-                        .map((option) => (
-                          <option key={option.value} value={option.value}>
-                            {option.label}
-                          </option>
-                        ))}
+                      {statusUpdateOptions.map((option) => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
                     </select>
                   </div>
 
@@ -824,9 +823,22 @@ export default function ShipmentsPage() {
                 <div className="space-y-4">
                   <div className="bg-red-50 border border-red-200 rounded-xl p-4">
                     <p className="text-red-800">
-                      هل أنت متأكد من حذف الشحنة <strong>{selectedShipment.trackingId}</strong>؟
+                      هل أنت متأكد من إلغاء الشحنة <strong>{selectedShipment.trackingId}</strong>؟
                     </p>
-                    <p className="text-red-600 text-sm mt-2">لا يمكن التراجع عن هذا الإجراء.</p>
+                    <p className="text-red-600 text-sm mt-2">
+                      سيتم تحديث حالة الشحنة إلى "ملغي" واسترجاع المبالغ المستحقة تلقائياً.
+                    </p>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">ملاحظات الإلغاء (اختياري)</label>
+                    <textarea
+                      value={cancelNotes}
+                      onChange={(e) => setCancelNotes(e.target.value)}
+                      rows={3}
+                      className="w-full px-3 py-2 border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
+                      placeholder="أدخل سبب الإلغاء ليظهر في سجل العميل..."
+                    />
                   </div>
 
                   <div className="flex gap-3 pt-4">
