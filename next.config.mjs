@@ -4,6 +4,9 @@ const nextConfig = {
     ignoreBuildErrors: true,
   },
 
+  basePath: '/dashboard',
+  assetPrefix: '/dashboard',
+
   images: {
     unoptimized: true,
   },

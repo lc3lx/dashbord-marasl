@@ -84,7 +84,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       setUser(formattedUser)
       initializeSocket(formattedUser.id)
-      router.push("/dashboard")
+      router.push("/")
     } catch (error: any) {
       throw error
     }
@@ -116,7 +116,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       localStorage.setItem("user", JSON.stringify(formattedUser))
 
       setUser(formattedUser)
-      router.push("/dashboard")
+      router.push("/")
     } catch (error: any) {
       throw error
     }
