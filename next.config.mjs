@@ -3,13 +3,10 @@ const nextConfig = {
   typescript: {
     ignoreBuildErrors: true,
   },
-
-  basePath: '/dashboard',
-  assetPrefix: '/dashboard',
-
   images: {
     unoptimized: true,
   },
-};
+}
 
-export default nextConfig;
+export default nextConfig
+

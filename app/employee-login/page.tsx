@@ -29,7 +29,7 @@ export default function EmployeeLoginPage() {
 
     try {
       await loginEmployee(email, password)
-      router.push("/")
+      router.push("/dashboard")
     } catch (err: any) {
       setError(err.message || "فشل تسجيل الدخول. يرجى التحقق من البريد الإلكتروني وكلمة المرور.")
     } finally {
