@@ -28,7 +28,7 @@ export default function LoginPage() {
 
     try {
       await login(email, password)
-      router.push("/")
+      router.push("/dashboard")
     } catch (err) {
       setError("فشل تسجيل الدخول. يرجى التحقق من البريد الإلكتروني وكلمة المرور.")
     } finally {

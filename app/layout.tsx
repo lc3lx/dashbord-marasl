@@ -18,8 +18,8 @@ export default function RootLayout({
   children: React.ReactNode
 }>) {
   return (
-    <html lang="ar" dir="rtl" suppressHydrationWarning>
-      <body className={`font-sans antialiased ${GeistSans.variable} ${GeistMono.variable}`} suppressHydrationWarning>
+    <html lang="ar" dir="rtl">
+      <body className={`font-sans antialiased ${GeistSans.variable} ${GeistMono.variable}`}>
         <AuthProvider>{children}</AuthProvider>
         <Analytics />
       </body>
