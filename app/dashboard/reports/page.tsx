@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useMemo } from "react"
 import { motion } from "framer-motion"
-import { BarChart3, TrendingUp, Users, Package, Truck, Calendar, Filter, DollarSign, ShoppingCart, ArrowUpRight, ArrowDownRight, Store, ArrowLeft } from 'lucide-react'
+import { BarChart3, TrendingUp, Users, Package, Truck, Calendar, Filter, DollarSign, ShoppingCart, ArrowUpRight, ArrowDownRight, Store, ArrowLeft, CheckCircle, XCircle } from 'lucide-react'
 import {
   LineChart,
   Line,
@@ -160,6 +160,7 @@ export default function ReportsPage() {
         const statsData = statsResponse.data || statsResponse.result || statsResponse || {}
         const usersData = usersResponse.data || usersResponse.result || usersResponse || []
         const carriersData = (carriersResponse?.data?.byCarrier || carriersResponse?.byCarrier || []) as any[]
+        const carriersByTypeData = (carriersResponse?.data?.byCarrierAndType || carriersResponse?.byCarrierAndType || []) as any[]
         const carriersOverall = carriersResponse?.data?.overall || carriersResponse?.overall || null
         const platformsData = platformsResponse?.data || platformsResponse || []
         const ordersData = ordersResponse?.data || []
@@ -198,14 +199,27 @@ export default function ReportsPage() {
         }
 
         // حساب الإحصائيات من البيانات المتوفرة
-        // إجمالي الإيرادات من إحصائيات شركات الشحن أو من الطلبات
+        // فلترة الطلبات حسب الفترة المحددة
+        const filteredOrdersData = Array.isArray(ordersData) 
+          ? ordersData.filter((o: any) => {
+              if (!o.createdAt) return false
+              const orderDate = new Date(o.createdAt)
+              if (startDate && orderDate < startDate) return false
+              if (endDate && orderDate > endDate) return false
+              return true
+            })
+          : []
+        
+        // إجمالي الإيرادات من إحصائيات شركات الشحن أو من الطلبات المفلترة
         const carriersTotalRevenue = Number(carriersOverall?.financials?.totalRevenue || 0)
         const totalRevenue = carriersTotalRevenue > 0
           ? carriersTotalRevenue
-          : (Array.isArray(ordersData) ? ordersData.reduce((sum: number, o: any) => sum + Number(o.totalAmount || 0), 0) : 0)
+          : filteredOrdersData.reduce((sum: number, o: any) => sum + Number(o.totalAmount || o.totalPrice || 0), 0)
 
-        // إجمالي الطلبات من باك الادمن
-        const totalOrders = Number(ordersPagination?.totalItems || 0)
+        // إجمالي الطلبات من الطلبات المفلترة (أو من pagination إذا كانت البيانات مفلترة من الخادم)
+        const totalOrders = filteredOrdersData.length > 0 
+          ? filteredOrdersData.length 
+          : Number(ordersPagination?.totalItems || 0)
         // إجمالي المستخدمين من إحصائيات الباك
         const totalUsers = Number(statsData?.users?.total || (Array.isArray(usersData) ? usersData.length : 0))
         // إجمالي الشحنات من إجمالي شركات الشحن (وفق الفترة)
@@ -228,18 +242,60 @@ export default function ReportsPage() {
             percentage: totalShipments > 0 ? (item.count / totalShipments) * 100 : 0,
           }))
 
-        // بيانات الطلبات الشهرية من قائمة الطلبات
-        const ordersMonthly = Array.isArray(ordersData) ? generateOrdersData(ordersData) : []
+        // بيانات الطلبات الشهرية من قائمة الطلبات (مع فلترة حسب الفترة)
+        const ordersMonthly = Array.isArray(ordersData) ? generateOrdersData(ordersData, startDate, endDate) : []
 
         // بيانات شركات الشحن من باك: /api/admin/carriers/stats
+        // الربح يُحسب فقط للشحنات المسلمة (Delivered)
         const companiesStats = Array.isArray(carriersData)
-          ? carriersData.map((c: any) => ({
-              name: c.company || "غير محدد",
-              totalShipments: c?.totals?.total || 0,
-              profit: Number(c?.financials?.ourProfit || 0),
-              amountDue: Number(c?.financials?.payableToCarrier || 0),
-              color: getRandomColor(),
-            }))
+          ? carriersData.map((c: any) => {
+              const totals = c?.totals || {}
+              const deliveredCount = Number(totals.delivered || 0)
+              const totalCount = Number(totals.total || 0)
+              const inTransitCount = Number(totals.inTransit || 0)
+              const readyForPickupCount = Number(totals.readyForPickup || 0)
+              const canceledCount = Number(totals.canceled || 0)
+              const returnsCount = Number(totals.returns || 0)
+              const ourProfit = Number(c?.financials?.ourProfit || 0) // الربح (فقط للشحنات المسلمة)
+              const payableToCarrier = Number(c?.financials?.payableToCarrier || 0) // المبلغ المستحق للشركة
+              const totalRevenue = Number(c?.financials?.totalRevenue || 0) // إجمالي الإيرادات
+              
+              // تجميع أنواع الشحن لهذه الشركة
+              const shipmentTypes = Array.isArray(carriersByTypeData)
+                ? carriersByTypeData
+                    .filter((ct: any) => ct.company === c.company)
+                    .map((ct: any) => {
+                      const typeTotals = ct?.totals || {}
+                      return {
+                        type: ct.shipmentType || "غير محدد",
+                        totalShipments: Number(typeTotals.total || 0),
+                        deliveredShipments: Number(typeTotals.delivered || 0),
+                        inTransitShipments: Number(typeTotals.inTransit || 0),
+                        readyForPickupShipments: Number(typeTotals.readyForPickup || 0),
+                        canceledShipments: Number(typeTotals.canceled || 0),
+                        returnsShipments: Number(typeTotals.returns || 0),
+                        profit: Number(ct?.financials?.ourProfit || 0),
+                        amountDue: Number(ct?.financials?.payableToCarrier || 0),
+                        totalRevenue: Number(ct?.financials?.totalRevenue || 0),
+                      }
+                    })
+                : []
+              
+              return {
+                name: c.company || "غير محدد",
+                totalShipments: totalCount,
+                deliveredShipments: deliveredCount,
+                inTransitShipments: inTransitCount,
+                readyForPickupShipments: readyForPickupCount,
+                canceledShipments: canceledCount,
+                returnsShipments: returnsCount,
+                profit: ourProfit, // الربح الصافي (فقط للشحنات المسلمة)
+                amountDue: payableToCarrier, // المبلغ المستحق للشركة
+                totalRevenue: totalRevenue, // إجمالي الإيرادات
+                shipmentTypes: shipmentTypes, // أنواع الشحن لهذه الشركة
+                color: getRandomColor(),
+              }
+            })
           : []
 
         // بيانات المنصات من باك: /api/admin/platforms
@@ -292,9 +348,9 @@ export default function ReportsPage() {
 
         const walletChargesCount = dailyRecords.reduce((sum: number, r: any) => sum + Number(r.count || 0), 0)
 
-        // إحصائيات حالات الطلبات من القائمة
-        const ordersStatus = Array.isArray(ordersData)
-          ? (ordersData as any[]).reduce(
+        // إحصائيات حالات الطلبات من القائمة المفلترة
+        const ordersStatus = Array.isArray(filteredOrdersData)
+          ? (filteredOrdersData as any[]).reduce(
               (acc, o: any) => {
                 const s = String(o.status || '').toLowerCase()
                 if (s === 'completed') acc.completed += 1
@@ -453,7 +509,7 @@ export default function ReportsPage() {
     return filteredData.slice(-4)
   }
 
-  const generateOrdersData = (orders: any[]) => {
+  const generateOrdersData = (orders: any[], startDate?: Date | null, endDate?: Date | null) => {
     if (!Array.isArray(orders) || orders.length === 0) return []
 
     const months = [
@@ -481,6 +537,11 @@ export default function ReportsPage() {
     orders.forEach((order: any) => {
       if (order.createdAt && new Date(order.createdAt).getTime()) {
         const date = new Date(order.createdAt)
+        
+        // فلترة حسب الفترة المحددة
+        if (startDate && date < startDate) return
+        if (endDate && date > endDate) return
+        
         const month = date.getMonth()
         monthlyData[month].count++
         monthlyData[month].revenue += Number(order.totalPrice || order.totalAmount || 0)
@@ -1860,9 +1921,70 @@ export default function ReportsPage() {
         {/* Shipments Report */}
         {selectedReport === "shipments" && (
           <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="space-y-6">
-            {/* Shipments Stats */}
+            {/* Shipments Overview Stats */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+              <div className="bg-white rounded-2xl shadow-lg p-6 hover:shadow-xl transition-shadow">
+                <div className="flex items-center gap-3 mb-4">
+                  <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-xl flex items-center justify-center">
+                    <Truck className="w-6 h-6 text-white" />
+                  </div>
+                  <div>
+                    <h3 className="text-gray-600 text-sm font-medium">إجمالي الشحنات</h3>
+                    <p className="text-2xl font-bold text-gray-900">
+                      {reportData.overview.totalShipments.toLocaleString()}
+                    </p>
+                  </div>
+                </div>
+              </div>
+              <div className="bg-white rounded-2xl shadow-lg p-6 hover:shadow-xl transition-shadow">
+                <div className="flex items-center gap-3 mb-4">
+                  <div className="w-12 h-12 bg-gradient-to-br from-green-500 to-emerald-600 rounded-xl flex items-center justify-center">
+                    <CheckCircle className="w-6 h-6 text-white" />
+                  </div>
+                  <div>
+                    <h3 className="text-gray-600 text-sm font-medium">الشحنات المسلمة</h3>
+                    <p className="text-2xl font-bold text-gray-900">
+                      {reportData.shipments.find((s: any) => s.status === "تم التسليم")?.count || 0}
+                    </p>
+                  </div>
+                </div>
+                <div className="mt-2 text-sm text-green-600 font-medium">
+                  {reportData.overview.totalShipments > 0
+                    ? `${((reportData.shipments.find((s: any) => s.status === "تم التسليم")?.count || 0) / reportData.overview.totalShipments * 100).toFixed(1)}%`
+                    : "0%"}
+                </div>
+              </div>
+              <div className="bg-white rounded-2xl shadow-lg p-6 hover:shadow-xl transition-shadow">
+                <div className="flex items-center gap-3 mb-4">
+                  <div className="w-12 h-12 bg-gradient-to-br from-amber-500 to-orange-600 rounded-xl flex items-center justify-center">
+                    <Package className="w-6 h-6 text-white" />
+                  </div>
+                  <div>
+                    <h3 className="text-gray-600 text-sm font-medium">قيد النقل</h3>
+                    <p className="text-2xl font-bold text-gray-900">
+                      {reportData.shipments.find((s: any) => s.status === "قيد النقل")?.count || 0}
+                    </p>
+                  </div>
+                </div>
+              </div>
+              <div className="bg-white rounded-2xl shadow-lg p-6 hover:shadow-xl transition-shadow">
+                <div className="flex items-center gap-3 mb-4">
+                  <div className="w-12 h-12 bg-gradient-to-br from-red-500 to-rose-600 rounded-xl flex items-center justify-center">
+                    <XCircle className="w-6 h-6 text-white" />
+                  </div>
+                  <div>
+                    <h3 className="text-gray-600 text-sm font-medium">الشحنات الملغاة</h3>
+                    <p className="text-2xl font-bold text-gray-900">
+                      {reportData.shipments.find((s: any) => s.status === "ملغي")?.count || 0}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Shipments Stats by Status */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {reportData.shipments.map((shipment, index) => (
+              {reportData.shipments.map((shipment: any, index: number) => (
                 <div key={index} className="bg-white rounded-2xl shadow-lg p-6 hover:shadow-xl transition-shadow">
                   <div className="flex items-center gap-3 mb-4">
                     <div
@@ -1877,21 +1999,200 @@ export default function ReportsPage() {
                     </div>
                   </div>
                   <div className="mt-3 pt-3 border-t border-gray-100">
-                    <div className="flex items-center justify-between">
+                    <div className="flex items-center justify-between mb-2">
                       <span className="text-sm text-gray-500">النسبة المئوية</span>
                       <span className="text-sm font-bold" style={{ color: shipment.color }}>
                         {shipment.percentage.toFixed(1)}%
                       </span>
                     </div>
-                    <div className="mt-2 w-full bg-gray-200 rounded-full h-2">
+                    <div className="w-full bg-gray-200 rounded-full h-2.5">
                       <div
-                        className="h-2 rounded-full transition-all duration-500"
-                        style={{ width: `${shipment.percentage}%`, backgroundColor: shipment.color }}
+                        className="h-2.5 rounded-full transition-all duration-500"
+                        style={{ width: `${Math.min(shipment.percentage, 100)}%`, backgroundColor: shipment.color }}
                       />
                     </div>
                   </div>
                 </div>
               ))}
+            </div>
+
+            {/* Shipments by Company Table */}
+            <div className="bg-white rounded-2xl shadow-lg p-6">
+              <div className="flex items-center gap-3 mb-6">
+                <div className="w-10 h-10 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-lg flex items-center justify-center">
+                  <Truck className="w-5 h-5 text-white" />
+                </div>
+                <h3 className="text-xl font-bold text-gray-900">تفصيل الشحنات حسب شركة الشحن ونوع الشحن</h3>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead>
+                    <tr className="bg-gradient-to-r from-indigo-50 to-purple-50 border-b-2 border-indigo-200">
+                      <th className="px-6 py-4 text-right text-sm font-bold text-gray-900">شركة الشحن</th>
+                      <th className="px-6 py-4 text-right text-sm font-bold text-gray-900">نوع الشحن</th>
+                      <th className="px-6 py-4 text-right text-sm font-bold text-gray-900">إجمالي الشحنات</th>
+                      <th className="px-6 py-4 text-right text-sm font-bold text-gray-900">تم التسليم</th>
+                      <th className="px-6 py-4 text-right text-sm font-bold text-gray-900">قيد النقل</th>
+                      <th className="px-6 py-4 text-right text-sm font-bold text-gray-900">قيد الانتظار</th>
+                      <th className="px-6 py-4 text-right text-sm font-bold text-gray-900">ملغي</th>
+                      <th className="px-6 py-4 text-right text-sm font-bold text-gray-900">مرتجع</th>
+                      <th className="px-6 py-4 text-right text-sm font-bold text-gray-900">نسبة التسليم</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {reportData.shippingCompanies.map((company: any, companyIndex: number) => {
+                      const companyDeliveryRate = company.totalShipments > 0
+                        ? ((company.deliveredShipments || 0) / company.totalShipments * 100).toFixed(1)
+                        : "0.0"
+                      
+                      // عرض بيانات الشركة الإجمالية
+                      const companyRow = (
+                        <tr key={`company-${companyIndex}`} className="border-b-2 border-indigo-200 bg-indigo-50/50">
+                          <td className="px-6 py-4" colSpan={1}>
+                            <div className="flex items-center gap-3">
+                              <div
+                                className="w-10 h-10 rounded-lg flex items-center justify-center"
+                                style={{ backgroundColor: `${company.color}20` }}
+                              >
+                                <Truck className="w-5 h-5" style={{ color: company.color }} />
+                              </div>
+                              <span className="font-bold text-gray-900">{company.name}</span>
+                            </div>
+                          </td>
+                          <td className="px-6 py-4">
+                            <span className="font-bold text-indigo-700">الإجمالي</span>
+                          </td>
+                          <td className="px-6 py-4 text-gray-900 font-bold text-center">
+                            {company.totalShipments.toLocaleString()}
+                          </td>
+                          <td className="px-6 py-4 text-green-700 font-bold text-center">
+                            {(company.deliveredShipments || 0).toLocaleString()}
+                          </td>
+                          <td className="px-6 py-4 text-blue-700 font-bold text-center">
+                            {(company.inTransitShipments || 0).toLocaleString()}
+                          </td>
+                          <td className="px-6 py-4 text-amber-700 font-bold text-center">
+                            {(company.readyForPickupShipments || 0).toLocaleString()}
+                          </td>
+                          <td className="px-6 py-4 text-red-700 font-bold text-center">
+                            {(company.canceledShipments || 0).toLocaleString()}
+                          </td>
+                          <td className="px-6 py-4 text-purple-700 font-bold text-center">
+                            {(company.returnsShipments || 0).toLocaleString()}
+                          </td>
+                          <td className="px-6 py-4 text-center">
+                            <span
+                              className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-bold ${
+                                Number.parseFloat(companyDeliveryRate) >= 80
+                                  ? "bg-green-100 text-green-700"
+                                  : Number.parseFloat(companyDeliveryRate) >= 60
+                                    ? "bg-blue-100 text-blue-700"
+                                    : "bg-amber-100 text-amber-700"
+                              }`}
+                            >
+                              {companyDeliveryRate}%
+                            </span>
+                          </td>
+                        </tr>
+                      )
+
+                      // عرض أنواع الشحن لهذه الشركة
+                      const typeRows = (company.shipmentTypes || []).map((type: any, typeIndex: number) => {
+                        const typeDeliveryRate = type.totalShipments > 0
+                          ? ((type.deliveredShipments || 0) / type.totalShipments * 100).toFixed(1)
+                          : "0.0"
+                        
+                        return (
+                          <tr key={`type-${companyIndex}-${typeIndex}`} className="border-b border-gray-100 hover:bg-gray-50 transition-colors bg-white">
+                            <td className="px-6 py-4">
+                              <div className="flex items-center gap-3 pl-8">
+                                <div className="w-2 h-2 rounded-full bg-gray-400"></div>
+                                <span className="text-sm text-gray-600">{company.name}</span>
+                              </div>
+                            </td>
+                            <td className="px-6 py-4">
+                              <span className="font-medium text-gray-700">{type.type}</span>
+                            </td>
+                            <td className="px-6 py-4 text-gray-700 font-medium text-center">
+                              {type.totalShipments.toLocaleString()}
+                            </td>
+                            <td className="px-6 py-4 text-green-700 font-medium text-center">
+                              {(type.deliveredShipments || 0).toLocaleString()}
+                            </td>
+                            <td className="px-6 py-4 text-blue-700 font-medium text-center">
+                              {(type.inTransitShipments || 0).toLocaleString()}
+                            </td>
+                            <td className="px-6 py-4 text-amber-700 font-medium text-center">
+                              {(type.readyForPickupShipments || 0).toLocaleString()}
+                            </td>
+                            <td className="px-6 py-4 text-red-700 font-medium text-center">
+                              {(type.canceledShipments || 0).toLocaleString()}
+                            </td>
+                            <td className="px-6 py-4 text-purple-700 font-medium text-center">
+                              {(type.returnsShipments || 0).toLocaleString()}
+                            </td>
+                            <td className="px-6 py-4 text-center">
+                              <span
+                                className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
+                                  Number.parseFloat(typeDeliveryRate) >= 80
+                                    ? "bg-green-100 text-green-700"
+                                    : Number.parseFloat(typeDeliveryRate) >= 60
+                                      ? "bg-blue-100 text-blue-700"
+                                      : "bg-amber-100 text-amber-700"
+                                }`}
+                              >
+                                {typeDeliveryRate}%
+                              </span>
+                            </td>
+                          </tr>
+                        )
+                      })
+
+                      return [companyRow, ...typeRows]
+                    }).flat()}
+                    <tr className="bg-gradient-to-r from-indigo-50 to-purple-50 font-bold">
+                      <td className="px-6 py-4 text-gray-900">الإجمالي</td>
+                      <td className="px-6 py-4 text-gray-900 text-center">
+                        {reportData.shippingCompanies
+                          .reduce((sum: number, company: any) => sum + company.totalShipments, 0)
+                          .toLocaleString()}
+                      </td>
+                      <td className="px-6 py-4 text-green-700 text-center">
+                        {reportData.shippingCompanies
+                          .reduce((sum: number, company: any) => sum + (company.deliveredShipments || 0), 0)
+                          .toLocaleString()}
+                      </td>
+                      <td className="px-6 py-4 text-blue-700 text-center">
+                        {reportData.shippingCompanies
+                          .reduce((sum: number, company: any) => sum + (company.inTransitShipments || 0), 0)
+                          .toLocaleString()}
+                      </td>
+                      <td className="px-6 py-4 text-amber-700 text-center">
+                        {reportData.shippingCompanies
+                          .reduce((sum: number, company: any) => sum + (company.readyForPickupShipments || 0), 0)
+                          .toLocaleString()}
+                      </td>
+                      <td className="px-6 py-4 text-red-700 text-center">
+                        {reportData.shippingCompanies
+                          .reduce((sum: number, company: any) => sum + (company.canceledShipments || 0), 0)
+                          .toLocaleString()}
+                      </td>
+                      <td className="px-6 py-4 text-purple-700 text-center">
+                        {reportData.shippingCompanies
+                          .reduce((sum: number, company: any) => sum + (company.returnsShipments || 0), 0)
+                          .toLocaleString()}
+                      </td>
+                      <td className="px-6 py-4 text-center">
+                        <span className="text-sm font-bold text-gray-900">
+                          {reportData.shippingCompanies.reduce((sum: number, company: any) => sum + company.totalShipments, 0) > 0
+                            ? `${((reportData.shippingCompanies.reduce((sum: number, company: any) => sum + (company.deliveredShipments || 0), 0) / reportData.shippingCompanies.reduce((sum: number, company: any) => sum + company.totalShipments, 0)) * 100).toFixed(1)}%`
+                            : "0%"}
+                        </span>
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
             </div>
 
             {/* Shipments Chart */}
@@ -1903,47 +2204,56 @@ export default function ReportsPage() {
                 <h3 className="text-xl font-bold text-gray-900">توزيع الشحنات حسب الحالة</h3>
               </div>
               <div className="flex flex-col items-center justify-center">
-                <ResponsiveContainer width="100%" height={350}>
+                <ResponsiveContainer width="100%" height={400}>
                   <PieChart>
                     <Pie
                       data={reportData.shipments}
                       cx="50%"
                       cy="50%"
                       labelLine={false}
-                      label={({ status, percentage }) => `${status}: ${percentage.toFixed(1)}%`}
-                      outerRadius={120}
+                      label={(entry: any) => `${entry.status}: ${entry.percentage.toFixed(1)}%`}
+                      outerRadius={140}
                       fill="#8884d8"
                       dataKey="count"
                     >
-                      {reportData.shipments.map((entry, index) => (
-                        <Cell key={`cell-${index}`} fill={entry.color} />
+                      {reportData.shipments.map((entry: any, index: number) => (
+                        <Cell key={`cell-${index}`} fill={entry.color} stroke="#fff" strokeWidth={2} />
                       ))}
                     </Pie>
                     <Tooltip
-                      formatter={(value: number) => [`${value.toLocaleString()} شحنة`, "العدد"]}
+                      formatter={(value: number, name: string, props: any) => [
+                        `${value.toLocaleString()} شحنة`,
+                        props.payload.status || "العدد"
+                      ]}
                       contentStyle={{
                         backgroundColor: "#fff",
                         border: "1px solid #e5e7eb",
                         borderRadius: "8px",
+                        padding: "8px 12px",
                       }}
+                    />
+                    <Legend
+                      formatter={(value: string, entry: any) => (
+                        <span style={{ color: entry.color }}>{value}</span>
+                      )}
                     />
                   </PieChart>
                 </ResponsiveContainer>
 
                 {/* Shipments Legend */}
-                <div className="w-full mt-4 pt-4 border-t border-gray-200">
-                  <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-                    {reportData.shipments.map((shipment, index) => (
-                      <div key={index} className="flex items-center justify-between gap-2 p-2 bg-gray-50 rounded-lg">
+                <div className="w-full mt-6 pt-6 border-t border-gray-200">
+                  <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
+                    {reportData.shipments.map((shipment: any, index: number) => (
+                      <div key={index} className="flex items-center justify-between gap-3 p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors">
                         <div className="flex items-center gap-2">
                           <div
-                            className="w-3 h-3 rounded-full flex-shrink-0"
+                            className="w-4 h-4 rounded-full flex-shrink-0"
                             style={{ backgroundColor: shipment.color }}
                           />
-                          <span className="text-xs font-medium text-gray-700">{shipment.status}</span>
+                          <span className="text-sm font-medium text-gray-700">{shipment.status}</span>
                         </div>
                         <div className="text-left">
-                          <div className="text-xs font-bold text-gray-900">{shipment.count.toLocaleString()}</div>
+                          <div className="text-sm font-bold text-gray-900">{shipment.count.toLocaleString()}</div>
                           <div className="text-xs text-gray-500">{shipment.percentage.toFixed(1)}%</div>
                         </div>
                       </div>
@@ -2007,7 +2317,10 @@ export default function ReportsPage() {
                     <h3 className="text-gray-600 text-sm">صافي الربح</h3>
                     <p className="text-2xl font-bold text-gray-900">
                       {reportData.shippingCompanies
-                        .reduce((sum, company) => sum + (company.profit - company.amountDue), 0)
+                        .reduce((sum: number, company: any) => {
+                          const vat = Math.round(company.profit * 0.15)
+                          return sum + (company.profit - vat - company.amountDue)
+                        }, 0)
                         .toLocaleString()}{" "}
                       ريال
                     </p>
@@ -2015,7 +2328,7 @@ export default function ReportsPage() {
                 </div>
                 <div className="flex items-center gap-2 text-emerald-600">
                   <ArrowUpRight className="w-4 h-4" />
-                  <span className="text-sm font-medium">بعد خصم المستحقات</span>
+                  <span className="text-sm font-medium">بعد خصم الضريبة والمستحقات (شحنات مسلمة فقط)</span>
                 </div>
               </div>
 
@@ -2050,20 +2363,24 @@ export default function ReportsPage() {
                   <thead>
                     <tr className="bg-gradient-to-r from-green-50 to-emerald-50 border-b-2 border-green-200">
                       <th className="px-6 py-4 text-right text-sm font-bold text-gray-900">شركة الشحن</th>
-                      <th className="px-6 py-4 text-right text-sm font-bold text-gray-900">عدد الشحنات</th>
-                      <th className="px-6 py-4 text-right text-sm font-bold text-gray-900">الإجمالي</th>
+                      <th className="px-6 py-4 text-right text-sm font-bold text-gray-900">إجمالي الشحنات</th>
+                      <th className="px-6 py-4 text-right text-sm font-bold text-gray-900">الشحنات المسلمة</th>
+                      <th className="px-6 py-4 text-right text-sm font-bold text-gray-900">إجمالي الربح</th>
                       <th className="px-6 py-4 text-right text-sm font-bold text-gray-900">
                         ضريبة القيمة المضافة (15%)
                       </th>
-                      <th className="px-6 py-4 text-right text-sm font-bold text-gray-900">المبلغ المستحق</th>
+                      <th className="px-6 py-4 text-right text-sm font-bold text-gray-900">المبلغ المستحق للشركة</th>
                       <th className="px-6 py-4 text-right text-sm font-bold text-gray-900">صافي الربح</th>
                       <th className="px-6 py-4 text-center text-sm font-bold text-gray-900">الحالة</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {reportData.shippingCompanies.map((company, index) => {
+                    {reportData.shippingCompanies.map((company: any, index: number) => {
                       const vat = Math.round(company.profit * 0.15)
                       const netProfit = company.profit - vat - company.amountDue
+                      const deliveryRate = company.totalShipments > 0 
+                        ? ((company.deliveredShipments || 0) / company.totalShipments * 100).toFixed(1)
+                        : "0.0"
                       return (
                         <tr key={index} className="border-b border-gray-100 hover:bg-gray-50 transition-colors">
                           <td className="px-6 py-4">
@@ -2079,6 +2396,10 @@ export default function ReportsPage() {
                           </td>
                           <td className="px-6 py-4 text-gray-700 font-medium">
                             {company.totalShipments.toLocaleString()}
+                          </td>
+                          <td className="px-6 py-4 text-green-700 font-medium">
+                            {(company.deliveredShipments || 0).toLocaleString()}
+                            <span className="text-xs text-gray-500 block">({deliveryRate}%)</span>
                           </td>
                           <td className="px-6 py-4 text-blue-600 font-bold">{company.profit.toLocaleString()} ريال</td>
                           <td className="px-6 py-4 text-purple-600 font-bold">{vat.toLocaleString()} ريال</td>
@@ -2108,31 +2429,36 @@ export default function ReportsPage() {
                       <td className="px-6 py-4 text-gray-900">الإجمالي</td>
                       <td className="px-6 py-4 text-gray-900">
                         {reportData.shippingCompanies
-                          .reduce((sum, company) => sum + company.totalShipments, 0)
+                          .reduce((sum: number, company: any) => sum + company.totalShipments, 0)
+                          .toLocaleString()}
+                      </td>
+                      <td className="px-6 py-4 text-green-700">
+                        {reportData.shippingCompanies
+                          .reduce((sum: number, company: any) => sum + (company.deliveredShipments || 0), 0)
                           .toLocaleString()}
                       </td>
                       <td className="px-6 py-4 text-blue-700">
                         {reportData.shippingCompanies
-                          .reduce((sum, company) => sum + company.profit, 0)
+                          .reduce((sum: number, company: any) => sum + company.profit, 0)
                           .toLocaleString()}{" "}
                         ريال
                       </td>
                       <td className="px-6 py-4 text-purple-700">
                         {reportData.shippingCompanies
-                          .reduce((sum, company) => sum + Math.round(company.profit * 0.15), 0)
+                          .reduce((sum: number, company: any) => sum + Math.round(company.profit * 0.15), 0)
                           .toLocaleString()}{" "}
                         ريال
                       </td>
                       <td className="px-6 py-4 text-amber-700">
                         {reportData.shippingCompanies
-                          .reduce((sum, company) => sum + company.amountDue, 0)
+                          .reduce((sum: number, company: any) => sum + company.amountDue, 0)
                           .toLocaleString()}{" "}
                         ريال
                       </td>
                       <td className="px-6 py-4 text-green-700 text-lg">
                         {reportData.shippingCompanies
                           .reduce(
-                            (sum, company) =>
+                            (sum: number, company: any) =>
                               sum + (company.profit - Math.round(company.profit * 0.15) - company.amountDue),
                             0,
                           )
@@ -2391,9 +2717,14 @@ export default function ReportsPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {reportData.orders.map((order, index) => {
+                    {reportData.orders.map((order: any, index: number) => {
                       const vat = Math.round(order.revenue * 0.15)
-                      const dues = Math.round(order.revenue * 0.12)
+                      // حساب المستحقات من البيانات الفعلية لشركات الشحن
+                      // تقدير المستحقات بناءً على نسبة المستحقات الإجمالية من الإيرادات الإجمالية
+                      const totalDues = reportData.shippingCompanies.reduce((sum: number, company: any) => sum + (company.amountDue || 0), 0)
+                      const totalRevenue = reportData.shippingCompanies.reduce((sum: number, company: any) => sum + (company.profit || 0), 0) || reportData.overview.totalRevenue
+                      const duesRatio = totalRevenue > 0 ? totalDues / totalRevenue : 0.12
+                      const dues = Math.round(order.revenue * duesRatio)
                       const netProfit = order.revenue - vat - dues
                       const growth =
                         index > 0
@@ -2439,82 +2770,161 @@ export default function ReportsPage() {
 
             {/* Payment Timeline & Status */}
             <div className="bg-white rounded-2xl shadow-lg p-6">
-              <div className="flex items-center gap-3 mb-6">
-                <div className="w-10 h-10 bg-gradient-to-br from-emerald-500 to-teal-600 rounded-lg flex items-center justify-center">
-                  <DollarSign className="w-5 h-5 text-white" />
+              <div className="flex items-center justify-between mb-6">
+                <div className="flex items-center gap-3">
+                  <div className="w-12 h-12 bg-gradient-to-br from-emerald-500 to-teal-600 rounded-xl flex items-center justify-center">
+                    <DollarSign className="w-6 h-6 text-white" />
+                  </div>
+                  <div>
+                    <h3 className="text-xl font-bold text-gray-900">الجدول الزمني للمدفوعات</h3>
+                    <p className="text-sm text-gray-500 mt-1">متابعة مستحقات شركات الشحن والمدفوعات</p>
+                  </div>
                 </div>
-                <h3 className="text-xl font-bold text-gray-900">الجدول الزمني للمدفوعات</h3>
               </div>
 
-              <div className="space-y-4">
-                {reportData.shippingCompanies.map((company, index) => {
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                {reportData.shippingCompanies.map((company: any, index: number) => {
                   const daysUntilDue = 15 - index * 2
-                  const paymentProgress = Math.round((company.amountDue / company.profit) * 100)
+                  const paymentProgress = company.profit > 0 
+                    ? Math.min(100, Math.round((company.amountDue / company.profit) * 100))
+                    : 0
+                  const paidAmount = Math.round(company.amountDue * 0.6)
+                  const remainingAmount = company.amountDue - paidAmount
 
                   return (
-                    <div key={index} className="border rounded-xl p-5 hover:shadow-md transition-all">
-                      <div className="flex items-center justify-between mb-3">
-                        <div className="flex items-center gap-3">
+                    <div 
+                      key={index} 
+                      className="relative border-2 rounded-2xl p-6 hover:shadow-xl transition-all duration-300 bg-gradient-to-br from-white to-gray-50"
+                      style={{ 
+                        borderColor: daysUntilDue > 10 
+                          ? "#10b981" 
+                          : daysUntilDue > 5 
+                            ? "#f59e0b" 
+                            : "#ef4444",
+                        borderOpacity: 0.3
+                      }}
+                    >
+                      {/* Header */}
+                      <div className="flex items-start justify-between mb-4">
+                        <div className="flex items-center gap-4 flex-1">
                           <div
-                            className="w-10 h-10 rounded-lg flex items-center justify-center"
-                            style={{ backgroundColor: `${company.color}20` }}
+                            className="w-14 h-14 rounded-xl flex items-center justify-center shadow-md"
+                            style={{ 
+                              backgroundColor: `${company.color}20`,
+                              border: `2px solid ${company.color}40`
+                            }}
                           >
-                            <Truck className="w-5 h-5" style={{ color: company.color }} />
+                            <Truck className="w-7 h-7" style={{ color: company.color }} />
                           </div>
-                          <div>
-                            <h4 className="font-bold text-gray-900">{company.name}</h4>
-                            <p className="text-xs text-gray-500">
-                              {daysUntilDue > 0 ? `الدفع مستحق بعد ${daysUntilDue} يوم` : "الدفع مستحق الآن"}
-                            </p>
+                          <div className="flex-1">
+                            <h4 className="text-lg font-bold text-gray-900 mb-1">{company.name}</h4>
+                            <div className="flex items-center gap-2">
+                              <Calendar className="w-4 h-4 text-gray-400" />
+                              <p className="text-sm text-gray-600">
+                                {daysUntilDue > 0 
+                                  ? `مستحق بعد ${daysUntilDue} ${daysUntilDue === 1 ? 'يوم' : 'أيام'}` 
+                                  : "مستحق الآن"}
+                              </p>
+                            </div>
                           </div>
                         </div>
-                        <div className="text-left">
-                          <p className="text-lg font-bold text-amber-600">{company.amountDue.toLocaleString()} ريال</p>
-                          <p className="text-xs text-gray-500">المبلغ المستحق</p>
+                        <div className="text-left bg-amber-50 rounded-lg px-4 py-2 border border-amber-200">
+                          <p className="text-2xl font-bold text-amber-700">{company.amountDue.toLocaleString()}</p>
+                          <p className="text-xs text-amber-600 font-medium">ريال مستحق</p>
                         </div>
                       </div>
 
-                      <div className="space-y-2">
-                        <div className="flex justify-between text-sm">
-                          <span className="text-gray-600">نسبة المستحق من الإيرادات</span>
-                          <span className="font-bold text-gray-900">{paymentProgress}%</span>
+                      {/* Progress Bar */}
+                      <div className="mb-5">
+                        <div className="flex items-center justify-between mb-2">
+                          <span className="text-sm font-medium text-gray-700">نسبة المستحق من الربح</span>
+                          <span className="text-sm font-bold text-gray-900">{paymentProgress}%</span>
                         </div>
-                        <div className="w-full bg-gray-200 rounded-full h-3">
+                        <div className="w-full bg-gray-200 rounded-full h-3 overflow-hidden shadow-inner">
                           <div
-                            className="h-3 rounded-full transition-all"
+                            className="h-3 rounded-full transition-all duration-500 relative"
                             style={{
                               width: `${paymentProgress}%`,
-                              backgroundColor: company.color,
+                              background: `linear-gradient(90deg, ${company.color} 0%, ${company.color}dd 100%)`,
                             }}
-                          />
+                          >
+                            <div className="absolute inset-0 bg-white/20 animate-pulse"></div>
+                          </div>
                         </div>
                       </div>
 
-                      <div className="grid grid-cols-3 gap-3 mt-4 pt-4 border-t border-gray-100">
-                        <div className="text-center">
-                          <p className="text-xs text-gray-500 mb-1">المدفوع</p>
-                          <p className="text-sm font-bold text-green-600">
-                            {Math.round(company.amountDue * 0.6).toLocaleString()} ريال
-                          </p>
+                      {/* Payment Details */}
+                      <div className="grid grid-cols-2 gap-4 mb-4">
+                        <div className="bg-green-50 rounded-xl p-4 border border-green-200">
+                          <div className="flex items-center gap-2 mb-2">
+                            <CheckCircle className="w-4 h-4 text-green-600" />
+                            <p className="text-xs font-medium text-green-700">المدفوع</p>
+                          </div>
+                          <p className="text-xl font-bold text-green-700">{paidAmount.toLocaleString()}</p>
+                          <p className="text-xs text-green-600 mt-1">60% من المستحق</p>
                         </div>
-                        <div className="text-center">
-                          <p className="text-xs text-gray-500 mb-1">المتبقي</p>
-                          <p className="text-sm font-bold text-amber-600">
-                            {Math.round(company.amountDue * 0.4).toLocaleString()} ريال
-                          </p>
+                        <div className="bg-amber-50 rounded-xl p-4 border border-amber-200">
+                          <div className="flex items-center gap-2 mb-2">
+                            <XCircle className="w-4 h-4 text-amber-600" />
+                            <p className="text-xs font-medium text-amber-700">المتبقي</p>
+                          </div>
+                          <p className="text-xl font-bold text-amber-700">{remainingAmount.toLocaleString()}</p>
+                          <p className="text-xs text-amber-600 mt-1">40% من المستحق</p>
                         </div>
-                        <div className="text-center">
-                          <p className="text-xs text-gray-500 mb-1">الحالة</p>
-                          <span
-                            className={`inline-block px-2 py-1 rounded-full text-xs font-bold ${
+                      </div>
+
+                      {/* Status Badge */}
+                      <div className="flex items-center justify-between pt-4 border-t border-gray-200">
+                        <div className="flex items-center gap-2">
+                          <div 
+                            className={`w-3 h-3 rounded-full ${
                               daysUntilDue > 10
-                                ? "bg-green-100 text-green-700"
+                                ? "bg-green-500"
                                 : daysUntilDue > 5
-                                  ? "bg-amber-100 text-amber-700"
-                                  : "bg-red-100 text-red-700"
+                                  ? "bg-amber-500"
+                                  : "bg-red-500"
                             }`}
-                          >
-                            {daysUntilDue > 10 ? "آمن" : daysUntilDue > 5 ? "تحذير" : "عاجل"}
+                          />
+                          <span className="text-sm text-gray-600">حالة الدفع</span>
+                        </div>
+                        <span
+                          className={`inline-flex items-center gap-2 px-4 py-2 rounded-full text-sm font-bold shadow-sm ${
+                            daysUntilDue > 10
+                              ? "bg-green-100 text-green-700 border border-green-300"
+                              : daysUntilDue > 5
+                                ? "bg-amber-100 text-amber-700 border border-amber-300"
+                                : "bg-red-100 text-red-700 border border-red-300"
+                          }`}
+                        >
+                          {daysUntilDue > 10 ? (
+                            <>
+                              <CheckCircle className="w-4 h-4" />
+                              آمن
+                            </>
+                          ) : daysUntilDue > 5 ? (
+                            <>
+                              <Package className="w-4 h-4" />
+                              تحذير
+                            </>
+                          ) : (
+                            <>
+                              <XCircle className="w-4 h-4" />
+                              عاجل
+                            </>
+                          )}
+                        </span>
+                      </div>
+
+                      {/* Timeline Indicator */}
+                      <div className="mt-4 pt-4 border-t border-gray-100">
+                        <div className="flex items-center justify-between text-xs text-gray-500">
+                          <span>تاريخ الاستحقاق</span>
+                          <span className="font-medium text-gray-700">
+                            {new Date(Date.now() + daysUntilDue * 24 * 60 * 60 * 1000).toLocaleDateString('ar-SA', {
+                              year: 'numeric',
+                              month: 'long',
+                              day: 'numeric'
+                            })}
                           </span>
                         </div>
                       </div>
@@ -2522,6 +2932,26 @@ export default function ReportsPage() {
                   )
                 })}
               </div>
+
+              {/* Summary Card */}
+              {reportData.shippingCompanies.length > 0 && (
+                <div className="mt-6 bg-gradient-to-r from-indigo-50 to-purple-50 rounded-xl p-6 border border-indigo-200">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h4 className="text-lg font-bold text-gray-900 mb-2">ملخص المستحقات</h4>
+                      <p className="text-sm text-gray-600">إجمالي المبالغ المستحقة لجميع الشركات</p>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-3xl font-bold text-indigo-700">
+                        {reportData.shippingCompanies
+                          .reduce((sum: number, company: any) => sum + company.amountDue, 0)
+                          .toLocaleString()}
+                      </p>
+                      <p className="text-sm text-indigo-600 font-medium">ريال</p>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Financial KPIs Summary */}
