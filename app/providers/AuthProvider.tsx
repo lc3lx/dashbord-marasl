@@ -2,7 +2,7 @@
 
 import { createContext, useContext, useState, useEffect, type ReactNode } from "react"
 import { useRouter } from "next/navigation"
-import { authAPI } from "@/lib/api"
+import { authAPI, dashboardAPI } from "@/lib/api"
 import { initializeSocket, disconnectSocket } from "@/lib/socket"
 
 interface User {
@@ -33,7 +33,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const router = useRouter()
 
   useEffect(() => {
-    const checkAuth = () => {
+    const checkAuth = async () => {
       try {
         const token = localStorage.getItem("authToken")
         const savedUser = localStorage.getItem("user")
@@ -43,12 +43,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           return
         }
 
-        const userData = JSON.parse(savedUser)
-        setUser(userData)
-        initializeSocket(userData.id)
+        // التحقق من صحة التوكن مع الخادم
+        try {
+          // محاولة جلب بيانات بسيطة للتحقق من صحة التوكن
+          // نستخدم skipAuthRedirect لتجنب إعادة التوجيه التلقائية
+          await dashboardAPI.getStats({ skipAuthRedirect: true })
+          
+          // إذا نجح، التوكن صالح
+          const userData = JSON.parse(savedUser)
+          setUser(userData)
+          initializeSocket(userData.id)
+        } catch (error: any) {
+          // إذا فشل (401 أو أي خطأ)، التوكن غير صالح
+          console.log("[Auth] Token validation failed:", error)
+          localStorage.removeItem("authToken")
+          localStorage.removeItem("user")
+          setUser(null)
+          // لا نعيد التوجيه هنا، سنترك الصفحة الحالية تتعامل مع ذلك
+        }
       } catch (error) {
+        console.error("[Auth] Error checking auth:", error)
         localStorage.removeItem("authToken")
         localStorage.removeItem("user")
+        setUser(null)
       } finally {
         setLoading(false)
       }

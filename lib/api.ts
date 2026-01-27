@@ -118,7 +118,7 @@ const apiClient = {
     return response.json();
   },
 
-  async get(endpoint: string, params?: any) {
+  async get(endpoint: string, params?: any, options?: { skipAuthRedirect?: boolean }) {
     try {
       const { url, isExternal } = resolveRequestUrl(endpoint);
       const urlInstance = isExternal
@@ -154,7 +154,13 @@ const apiClient = {
           if (typeof window !== "undefined") {
             localStorage.removeItem("authToken");
             localStorage.removeItem("user");
-            window.location.href = "/login";
+            // فقط أعد التوجيه إذا لم يتم طلب تخطي إعادة التوجيه
+            if (!options?.skipAuthRedirect) {
+              // تأكد من أننا لسنا في صفحة login بالفعل
+              if (!window.location.pathname.includes("/login")) {
+                window.location.href = "/login";
+              }
+            }
           }
           throw new Error("غير مصرح");
         }
@@ -305,8 +311,8 @@ export const employeeAuthAPI = {
 };
 
 export const dashboardAPI = {
-  getStats: async () => {
-    return apiClient.get("/api/admin/stats");
+  getStats: async (options?: { skipAuthRedirect?: boolean }) => {
+    return apiClient.get("/api/admin/stats", undefined, options);
   },
   getUsers: (params?: any) => apiClient.get("/api/admin/users", params),
   getCarrierStats: (params?: any) =>
