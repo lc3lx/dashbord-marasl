@@ -55,6 +55,8 @@ export default function ReportsPage() {
   const [selectedReport, setSelectedReport] = useState("overview")
   const [customDateFrom, setCustomDateFrom] = useState("")
   const [customDateTo, setCustomDateTo] = useState("")
+  const [selectedMonth, setSelectedMonth] = useState<number | null>(new Date().getMonth())
+  const [selectedYear, setSelectedYear] = useState<number>(new Date().getFullYear())
   const router = useRouter() // Initialize router for back navigation
 
   const [topUsers, setTopUsers] = useState<UserData[]>([]) // State for top users
@@ -107,9 +109,16 @@ export default function ReportsPage() {
               break
             }
             case "thisMonth":
-              start.setDate(1)
+              // استخدام الشهر المحدد أو الشهر الحالي
+              const monthToUse = selectedMonth !== null ? selectedMonth : now.getMonth()
+              const yearToUse = selectedMonth !== null ? selectedYear : now.getFullYear()
+              start.setFullYear(yearToUse, monthToUse, 1)
               start.setHours(0, 0, 0, 0)
               startDate = start
+              // حساب آخر يوم في الشهر
+              const lastDay = new Date(yearToUse, monthToUse + 1, 0)
+              endDate = new Date(lastDay)
+              endDate.setHours(23, 59, 59, 999)
               break
             case "thisYear":
               start.setMonth(0, 1)
@@ -396,7 +405,7 @@ export default function ReportsPage() {
     }
 
     fetchData()
-  }, [selectedPeriod, customDateFrom, customDateTo])
+  }, [selectedPeriod, customDateFrom, customDateTo, selectedMonth, selectedYear])
 
   const generateMonthlyData = (items: any[], dateField: string) => {
     if (!Array.isArray(items) || items.length === 0) return []
@@ -486,6 +495,15 @@ export default function ReportsPage() {
   // إضافة دوال مساعدة لـ Period
   const handlePeriodChange = (newPeriod: string) => {
     setSelectedPeriod(newPeriod)
+    // إذا تم اختيار فترة غير "thisMonth"، امسح اختيار الشهر
+    if (newPeriod !== "thisMonth") {
+      setSelectedMonth(null)
+    }
+  }
+
+  const handleMonthChange = (month: number) => {
+    setSelectedMonth(month)
+    setSelectedPeriod("thisMonth") // تأكد من أن الفترة هي "thisMonth"
   }
 
   // إضافة دوال مساعدة لـ Report Type
@@ -643,6 +661,56 @@ export default function ReportsPage() {
               ))}
             </div>
           </div>
+
+          {selectedPeriod === "thisMonth" && (
+            <div className="mt-4 p-4 bg-background rounded-lg border border-border">
+              <div className="flex flex-wrap items-end gap-4">
+                <div className="flex flex-col gap-2">
+                  <label className="text-sm font-medium text-foreground">اختر الشهر:</label>
+                  <select
+                    value={selectedMonth !== null ? selectedMonth : new Date().getMonth()}
+                    onChange={(e) => handleMonthChange(Number(e.target.value))}
+                    className="px-3 py-2 border border-input rounded-lg bg-background text-foreground focus:ring-2 focus:ring-ring focus:border-ring transition-colors"
+                  >
+                    <option value={0}>يناير</option>
+                    <option value={1}>فبراير</option>
+                    <option value={2}>مارس</option>
+                    <option value={3}>أبريل</option>
+                    <option value={4}>مايو</option>
+                    <option value={5}>يونيو</option>
+                    <option value={6}>يوليو</option>
+                    <option value={7}>أغسطس</option>
+                    <option value={8}>سبتمبر</option>
+                    <option value={9}>أكتوبر</option>
+                    <option value={10}>نوفمبر</option>
+                    <option value={11}>ديسمبر</option>
+                  </select>
+                </div>
+                <div className="flex flex-col gap-2">
+                  <label className="text-sm font-medium text-foreground">اختر السنة:</label>
+                  <select
+                    value={selectedYear}
+                    onChange={(e) => setSelectedYear(Number(e.target.value))}
+                    className="px-3 py-2 border border-input rounded-lg bg-background text-foreground focus:ring-2 focus:ring-ring focus:border-ring transition-colors"
+                  >
+                    {Array.from({ length: 5 }, (_, i) => {
+                      const year = new Date().getFullYear() - i
+                      return (
+                        <option key={year} value={year}>
+                          {year}
+                        </option>
+                      )
+                    })}
+                  </select>
+                </div>
+                {selectedMonth !== null && (
+                  <div className="text-sm text-muted-foreground bg-muted px-3 py-2 rounded-lg border border-border">
+                    {["يناير", "فبراير", "مارس", "أبريل", "مايو", "يونيو", "يوليو", "أغسطس", "سبتمبر", "أكتوبر", "نوفمبر", "ديسمبر"][selectedMonth]} {selectedYear}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
 
           {selectedPeriod === "custom" && (
             <div className="mt-4 p-4 bg-background rounded-lg border border-border">
@@ -2570,7 +2638,7 @@ export default function ReportsPage() {
                   <div>
                     <h3 className="text-gray-600 text-sm">إجمالي المتاجر</h3>
                     <p className="text-2xl font-bold text-gray-900">
-                      {reportData.platforms.reduce((sum, platform) => sum + platform.stores, 0).toLocaleString()}
+                      {(reportData.platforms || []).reduce((sum, platform) => sum + (platform.stores || 0), 0).toLocaleString()}
                     </p>
                   </div>
                 </div>
@@ -2587,7 +2655,7 @@ export default function ReportsPage() {
                   <div>
                     <h3 className="text-gray-600 text-sm">إجمالي الطلبات</h3>
                     <p className="text-2xl font-bold text-gray-900">
-                      {reportData.platforms.reduce((sum, platform) => sum + platform.orders, 0).toLocaleString()}
+                      {(reportData.platforms || []).reduce((sum, platform) => sum + (platform.orders || 0), 0).toLocaleString()}
                     </p>
                   </div>
                 </div>
@@ -2605,7 +2673,7 @@ export default function ReportsPage() {
                   <div>
                     <h3 className="text-gray-600 text-sm">إجمالي الإيرادات</h3>
                     <p className="text-2xl font-bold text-gray-900">
-                      {reportData.platforms.reduce((sum, platform) => sum + platform.revenue, 0).toLocaleString()} ريال
+                      {(reportData.platforms || []).reduce((sum, platform) => sum + (platform.revenue || 0), 0).toLocaleString()} ريال
                     </p>
                   </div>
                 </div>
@@ -2623,10 +2691,12 @@ export default function ReportsPage() {
                   <div>
                     <h3 className="text-gray-600 text-sm">متوسط الطلب</h3>
                     <p className="text-2xl font-bold text-gray-900">
-                      {Math.round(
-                        reportData.platforms.reduce((sum, platform) => sum + platform.revenue, 0) /
-                          reportData.platforms.reduce((sum, platform) => sum + platform.orders, 0),
-                      ).toLocaleString()}{" "}
+                      {(() => {
+                        const platforms = reportData.platforms || []
+                        const totalRevenue = platforms.reduce((sum, platform) => sum + (platform.revenue || 0), 0)
+                        const totalOrders = platforms.reduce((sum, platform) => sum + (platform.orders || 0), 0)
+                        return totalOrders > 0 ? Math.round(totalRevenue / totalOrders).toLocaleString() : "0"
+                      })()}{" "}
                       ريال
                     </p>
                   </div>
@@ -2639,7 +2709,7 @@ export default function ReportsPage() {
 
             {/* Platform Cards */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              {reportData.platforms.map((platform, index) => (
+              {(reportData.platforms || []).map((platform, index) => (
                 <div key={index} className="bg-white rounded-2xl shadow-lg p-6 hover:shadow-xl transition-all">
                   <div className="flex items-center justify-between mb-6">
                     <div className="flex items-center gap-3">
@@ -2745,8 +2815,8 @@ export default function ReportsPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {reportData.platforms.map((platform, index) => {
-                      const avgOrder = Math.round(platform.revenue / platform.orders)
+                    {(reportData.platforms || []).map((platform, index) => {
+                      const avgOrder = platform.orders > 0 ? Math.round((platform.revenue || 0) / platform.orders) : 0
                       return (
                         <tr key={index} className="border-b border-gray-100 hover:bg-gray-50 transition-colors">
                           <td className="px-6 py-4">
@@ -2806,20 +2876,22 @@ export default function ReportsPage() {
                     <tr className="bg-gradient-to-r from-indigo-50 to-purple-50 font-bold">
                       <td className="px-6 py-4 text-gray-900">الإجمالي</td>
                       <td className="px-6 py-4 text-gray-900">
-                        {reportData.platforms.reduce((sum, platform) => sum + platform.stores, 0).toLocaleString()}
+                        {(reportData.platforms || []).reduce((sum, platform) => sum + (platform.stores || 0), 0).toLocaleString()}
                       </td>
                       <td className="px-6 py-4 text-purple-700">
-                        {reportData.platforms.reduce((sum, platform) => sum + platform.orders, 0).toLocaleString()}
+                        {(reportData.platforms || []).reduce((sum, platform) => sum + (platform.orders || 0), 0).toLocaleString()}
                       </td>
                       <td className="px-6 py-4 text-green-700">
-                        {reportData.platforms.reduce((sum, platform) => sum + platform.revenue, 0).toLocaleString()}{" "}
+                        {(reportData.platforms || []).reduce((sum, platform) => sum + (platform.revenue || 0), 0).toLocaleString()}{" "}
                         ريال
                       </td>
                       <td className="px-6 py-4 text-gray-900">
-                        {Math.round(
-                          reportData.platforms.reduce((sum, platform) => sum + platform.revenue, 0) /
-                            reportData.platforms.reduce((sum, platform) => sum + platform.orders, 0),
-                        ).toLocaleString()}{" "}
+                        {(() => {
+                          const platforms = reportData.platforms || []
+                          const totalRevenue = platforms.reduce((sum, platform) => sum + (platform.revenue || 0), 0)
+                          const totalOrders = platforms.reduce((sum, platform) => sum + (platform.orders || 0), 0)
+                          return totalOrders > 0 ? Math.round(totalRevenue / totalOrders).toLocaleString() : "0"
+                        })()}{" "}
                         ريال
                       </td>
                       <td className="px-6 py-4"></td>
@@ -2851,8 +2923,8 @@ export default function ReportsPage() {
                       formatter={(value: number) => [`${value.toLocaleString()} ريال`, "الإيرادات"]}
                     />
                     <Bar dataKey="revenue" fill="#22c55e" name="الإيرادات" radius={[8, 8, 0, 0]}>
-                      {reportData.platforms.map((entry, index) => (
-                        <Cell key={`cell-${index}`} fill={entry.color} />
+                      {(reportData.platforms || []).map((entry, index) => (
+                        <Cell key={`cell-${index}`} fill={entry.color || "#6366f1"} />
                       ))}
                     </Bar>
                   </BarChart>
@@ -2860,7 +2932,7 @@ export default function ReportsPage() {
 
                 <div className="w-full mt-4 pt-4 border-t border-gray-200">
                   <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-                    {reportData.platforms.map((platform, index) => (
+                    {(reportData.platforms || []).map((platform, index) => (
                       <div key={index} className="flex items-center justify-between gap-2 p-2 bg-gray-50 rounded-lg">
                         <div className="flex items-center gap-2">
                           <div
@@ -2900,8 +2972,8 @@ export default function ReportsPage() {
                         outerRadius={100}
                         dataKey="orders"
                       >
-                        {reportData.platforms.map((entry, index) => (
-                          <Cell key={`cell-${index}`} fill={entry.color} stroke="#fff" strokeWidth={2} />
+                        {(reportData.platforms || []).map((entry, index) => (
+                          <Cell key={`cell-${index}`} fill={entry.color || "#6366f1"} stroke="#fff" strokeWidth={2} />
                         ))}
                       </Pie>
                       <Tooltip
@@ -2918,7 +2990,7 @@ export default function ReportsPage() {
 
                   <div className="w-full mt-4 pt-4 border-t border-gray-200">
                     <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-                      {reportData.platforms.map((platform, index) => (
+                      {(reportData.platforms || []).map((platform, index) => (
                         <div key={index} className="flex items-center justify-between gap-2 p-2 bg-gray-50 rounded-lg">
                           <div className="flex items-center gap-2">
                             <div
@@ -2930,10 +3002,11 @@ export default function ReportsPage() {
                           <div className="text-left">
                             <div className="text-xs font-bold text-gray-900">{platform.orders.toLocaleString()}</div>
                             <div className="text-xs text-gray-500">
-                              {(
-                                (platform.orders / reportData.platforms.reduce((sum, p) => sum + p.orders, 0)) *
-                                100
-                              ).toFixed(1)}
+                              {(() => {
+                                const platforms = reportData.platforms || []
+                                const totalOrders = platforms.reduce((sum, p) => sum + (p.orders || 0), 0)
+                                return totalOrders > 0 ? ((platform.orders / totalOrders) * 100).toFixed(1) : "0.0"
+                              })()}
                               %
                             </div>
                           </div>
@@ -2957,64 +3030,103 @@ export default function ReportsPage() {
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
                 <div className="bg-white/10 backdrop-blur-sm rounded-xl p-5 border border-white/20">
                   <p className="text-indigo-100 text-sm mb-2">أفضل منصة (إيرادات)</p>
-                  <p className="text-2xl font-bold">{reportData.platforms[0].name.split(" ")[0]}</p>
-                  <p className="text-lg text-green-300 mt-1">{reportData.platforms[0].revenue.toLocaleString()} ريال</p>
+                  {reportData.platforms && reportData.platforms.length > 0 ? (
+                    <>
+                      <p className="text-2xl font-bold">{reportData.platforms[0]?.name?.split(" ")[0] || "غير متاح"}</p>
+                      <p className="text-lg text-green-300 mt-1">{reportData.platforms[0]?.revenue?.toLocaleString() || 0} ريال</p>
+                    </>
+                  ) : (
+                    <>
+                      <p className="text-2xl font-bold">لا توجد بيانات</p>
+                      <p className="text-lg text-green-300 mt-1">0 ريال</p>
+                    </>
+                  )}
                 </div>
 
                 <div className="bg-white/10 backdrop-blur-sm rounded-xl p-5 border border-white/20">
                   <p className="text-indigo-100 text-sm mb-2">أعلى نمو</p>
-                  <p className="text-2xl font-bold">
-                    {reportData.platforms.reduce((max, p) => (p.growth > max.growth ? p : max)).name.split(" ")[0]}
-                  </p>
-                  <div className="flex items-center gap-1 text-green-300 mt-1">
-                    <ArrowUpRight className="w-4 h-4" />
-                    <span className="text-lg">
-                      +{reportData.platforms.reduce((max, p) => (p.growth > max.growth ? p : max)).growth}%
-                    </span>
-                  </div>
+                  {reportData.platforms && reportData.platforms.length > 0 ? (
+                    <>
+                      <p className="text-2xl font-bold">
+                        {reportData.platforms.reduce((max, p) => (p.growth > max.growth ? p : max), reportData.platforms[0])?.name?.split(" ")[0] || "غير متاح"}
+                      </p>
+                      <div className="flex items-center gap-1 text-green-300 mt-1">
+                        <ArrowUpRight className="w-4 h-4" />
+                        <span className="text-lg">
+                          +{reportData.platforms.reduce((max, p) => (p.growth > max.growth ? p : max), reportData.platforms[0])?.growth || 0}%
+                        </span>
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <p className="text-2xl font-bold">لا توجد بيانات</p>
+                      <div className="flex items-center gap-1 text-green-300 mt-1">
+                        <ArrowUpRight className="w-4 h-4" />
+                        <span className="text-lg">+0%</span>
+                      </div>
+                    </>
+                  )}
                 </div>
 
                 <div className="bg-white/10 backdrop-blur-sm rounded-xl p-5 border border-white/20">
                   <p className="text-indigo-100 text-sm mb-2">أفضل صحة اتصال</p>
-                  <p className="text-2xl font-bold">
-                    {reportData.platforms.reduce((max, p) => (p.health > max.health ? p : max)).name.split(" ")[0]}
-                  </p>
-                  <p className="text-lg text-blue-300 mt-1">
-                    {reportData.platforms.reduce((max, p) => (p.health > max.health ? p : max)).health}%
-                  </p>
+                  {reportData.platforms && reportData.platforms.length > 0 ? (
+                    <>
+                      <p className="text-2xl font-bold">
+                        {reportData.platforms.reduce((max, p) => (p.health > max.health ? p : max), reportData.platforms[0])?.name?.split(" ")[0] || "غير متاح"}
+                      </p>
+                      <p className="text-lg text-blue-300 mt-1">
+                        {reportData.platforms.reduce((max, p) => (p.health > max.health ? p : max), reportData.platforms[0])?.health || 0}%
+                      </p>
+                    </>
+                  ) : (
+                    <>
+                      <p className="text-2xl font-bold">لا توجد بيانات</p>
+                      <p className="text-lg text-blue-300 mt-1">0%</p>
+                    </>
+                  )}
                 </div>
 
                 <div className="bg-white/10 backdrop-blur-sm rounded-xl p-5 border border-white/20">
                   <p className="text-indigo-100 text-sm mb-2">متوسط الطلب الأعلى</p>
-                  <p className="text-2xl font-bold">
-                    {
-                      reportData.platforms
-                        .reduce((max, p) => (p.revenue / p.orders > max.revenue / max.orders ? p : max), {
-                          revenue: 0,
-                          orders: 1,
-                        } as any)
-                        .name.split(" ")[0]
-                    }
-                  </p>
-                  <p className="text-lg text-amber-300 mt-1">
-                    {Math.round(
-                      reportData.platforms.reduce(
-                        (max, p) => (p.revenue / p.orders > max.revenue / max.orders ? p : max),
-                        {
-                          revenue: 0,
-                          orders: 1,
-                        } as any,
-                      ).revenue /
-                        reportData.platforms.reduce(
-                          (max, p) => (p.revenue / p.orders > max.revenue / max.orders ? p : max),
-                          {
-                            revenue: 0,
-                            orders: 1,
-                          } as any,
-                        ).orders,
-                    ).toLocaleString()}{" "}
-                    ريال
-                  </p>
+                  {reportData.platforms && reportData.platforms.length > 0 ? (
+                    <>
+                      {reportData.platforms && reportData.platforms.length > 0 ? (
+                        <>
+                          <p className="text-2xl font-bold">
+                            {
+                              reportData.platforms
+                                .reduce((max, p) => (p.revenue / (p.orders || 1) > max.revenue / (max.orders || 1) ? p : max), reportData.platforms[0])
+                                ?.name?.split(" ")[0] || "غير متاح"
+                            }
+                          </p>
+                          <p className="text-lg text-amber-300 mt-1">
+                            {Math.round(
+                              (reportData.platforms.reduce(
+                                (max, p) => (p.revenue / (p.orders || 1) > max.revenue / (max.orders || 1) ? p : max),
+                                reportData.platforms[0],
+                              ).revenue || 0) /
+                                (reportData.platforms.reduce(
+                                  (max, p) => (p.revenue / (p.orders || 1) > max.revenue / (max.orders || 1) ? p : max),
+                                  reportData.platforms[0],
+                                ).orders || 1),
+                            ).toLocaleString()}{" "}
+                            ريال
+                          </p>
+                        </>
+                      ) : (
+                        <>
+                          <p className="text-2xl font-bold">لا توجد بيانات</p>
+                          <p className="text-lg text-amber-300 mt-1">0 ريال</p>
+                        </>
+                      )}
+                    </>
+                  ) : (
+                    <>
+                      <p className="text-2xl font-bold">لا توجد بيانات</p>
+                      <p className="text-lg text-amber-300 mt-1">0 ريال</p>
+                    </>
+                  )}
                 </div>
               </div>
 
@@ -3023,15 +3135,17 @@ export default function ReportsPage() {
                   <div className="flex items-center gap-2">
                     <div className="w-2 h-2 bg-green-400 rounded-full"></div>
                     <span className="text-indigo-100">جميع المنصات: </span>
-                    <span className="font-bold">{reportData.platforms.length} منصات نشطة</span>
+                    <span className="font-bold">{reportData.platforms?.length || 0} منصات نشطة</span>
                   </div>
                   <div className="flex items-center gap-2">
                     <div className="w-2 h-2 bg-blue-400 rounded-full"></div>
                     <span className="text-indigo-100">متوسط صحة الاتصال: </span>
                     <span className="font-bold">
-                      {Math.round(
-                        reportData.platforms.reduce((sum, p) => sum + p.health, 0) / reportData.platforms.length,
-                      )}
+                      {reportData.platforms && reportData.platforms.length > 0
+                        ? Math.round(
+                            reportData.platforms.reduce((sum, p) => sum + (p.health || 0), 0) / reportData.platforms.length,
+                          )
+                        : 0}
                       %
                     </span>
                   </div>
@@ -3039,10 +3153,11 @@ export default function ReportsPage() {
                     <div className="w-2 h-2 bg-purple-400 rounded-full"></div>
                     <span className="text-indigo-100">متوسط النمو: </span>
                     <span className="font-bold">
-                      +
-                      {(
-                        reportData.platforms.reduce((sum, p) => sum + p.growth, 0) / reportData.platforms.length
-                      ).toFixed(1)}
+                      {reportData.platforms && reportData.platforms.length > 0
+                        ? `+${(
+                            reportData.platforms.reduce((sum, p) => sum + (p.growth || 0), 0) / reportData.platforms.length
+                          ).toFixed(1)}`
+                        : "+0.0"}
                       %
                     </span>
                   </div>

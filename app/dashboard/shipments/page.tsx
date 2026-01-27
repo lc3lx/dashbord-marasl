@@ -21,6 +21,7 @@ import {
   CreditCard,
   ChevronLeft,
   ChevronRight,
+  Calendar,
 } from "lucide-react"
 import { motion, AnimatePresence } from "framer-motion"
 import { useState, useEffect } from "react"
@@ -136,6 +137,8 @@ export default function ShipmentsPage() {
   const [debouncedSearch, setDebouncedSearch] = useState("")
   const [statusFilter, setStatusFilter] = useState<string>("all")
   const [paymentFilter, setPaymentFilter] = useState<string>("all")
+  const [dateFrom, setDateFrom] = useState("")
+  const [dateTo, setDateTo] = useState("")
   const [selectedShipment, setSelectedShipment] = useState<Shipment | null>(null)
   const [showDetailsModal, setShowDetailsModal] = useState(false)
   const [showEditModal, setShowEditModal] = useState(false)
@@ -154,15 +157,24 @@ export default function ShipmentsPage() {
 
   useEffect(() => {
     setCurrentPage(1)
-  }, [debouncedSearch, statusFilter, paymentFilter])
+  }, [debouncedSearch, statusFilter, paymentFilter, dateFrom, dateTo])
 
   const { data, error, isLoading, mutate, isValidating } = useSWR(
-    ["admin-shipments", currentPage, itemsPerPage, debouncedSearch, statusFilter, paymentFilter],
-    async ([, page, limit, search, status, payment]) => {
+    ["admin-shipments", currentPage, itemsPerPage, debouncedSearch, statusFilter, paymentFilter, dateFrom, dateTo],
+    async ([, page, limit, search, status, payment, from, to]) => {
       const params: Record<string, any> = { page, limit }
       if (search) params.search = search
       if (status !== "all") params.status = status
       if (payment !== "all") params.paymentMethod = payment
+      if (from) {
+        params.startDate = from
+        params.dateFrom = from // دعم كلا الاسمين
+      }
+      if (to) {
+        params.endDate = to
+        params.dateTo = to // دعم كلا الاسمين
+      }
+      console.log("[Shipments] Filter params:", params)
       return adminShipmentsAPI.getAll(params)
     },
     {
@@ -311,44 +323,86 @@ export default function ShipmentsPage() {
           </div>
 
           <div className="bg-white/90 backdrop-blur-sm rounded-2xl p-6 shadow-lg border border-white/20">
-            <div className="flex flex-col md:flex-row gap-4">
-              <div className="flex-1 relative">
-                <Search className="absolute right-4 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
-                <input
-                  type="text"
-                  placeholder="البحث برقم التتبع، اسم العميل، أو الوجهة..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="w-full pr-12 pl-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
-                />
+            <div className="flex flex-col gap-4">
+              <div className="flex flex-col md:flex-row gap-4">
+                <div className="flex-1 relative">
+                  <Search className="absolute right-4 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
+                  <input
+                    type="text"
+                    placeholder="البحث برقم التتبع، اسم العميل، أو الوجهة..."
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    className="w-full pr-12 pl-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
+                  />
+                </div>
+                <div className="flex flex-col sm:flex-row gap-2">
+                  <div className="flex items-center gap-2">
+                    <Filter className="text-gray-400 w-5 h-5" />
+                    <select
+                      value={statusFilter}
+                      onChange={(e) => setStatusFilter(e.target.value)}
+                      className="px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
+                    >
+                      {filterStatusOptions.map((option) => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <CreditCard className="text-gray-400 w-5 h-5" />
+                    <select
+                      value={paymentFilter}
+                      onChange={(e) => setPaymentFilter(e.target.value)}
+                      className="px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
+                    >
+                      <option value="all">كل طرق الدفع</option>
+                      <option value="Prepaid">مدفوع مسبقًا</option>
+                      <option value="COD">دفع عند الاستلام</option>
+                    </select>
+                  </div>
+                </div>
               </div>
-              <div className="flex flex-col sm:flex-row gap-2">
+              
+              {/* Date Filters */}
+              <div className="flex flex-col sm:flex-row gap-4 pt-4 border-t border-gray-200">
                 <div className="flex items-center gap-2">
-                  <Filter className="text-gray-400 w-5 h-5" />
-                  <select
-                    value={statusFilter}
-                    onChange={(e) => setStatusFilter(e.target.value)}
-                    className="px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
-                  >
-                    {filterStatusOptions.map((option) => (
-                      <option key={option.value} value={option.value}>
-                        {option.label}
-                      </option>
-                    ))}
-                  </select>
+                  <Calendar className="text-gray-400 w-5 h-5" />
+                  <span className="text-sm font-medium text-gray-700">من تاريخ:</span>
+                </div>
+                <div className="flex-1">
+                  <input
+                    type="date"
+                    value={dateFrom}
+                    onChange={(e) => setDateFrom(e.target.value)}
+                    className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
+                  />
                 </div>
                 <div className="flex items-center gap-2">
-                  <CreditCard className="text-gray-400 w-5 h-5" />
-                  <select
-                    value={paymentFilter}
-                    onChange={(e) => setPaymentFilter(e.target.value)}
-                    className="px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
-                  >
-                    <option value="all">كل طرق الدفع</option>
-                    <option value="Prepaid">مدفوع مسبقًا</option>
-                    <option value="COD">دفع عند الاستلام</option>
-                  </select>
+                  <Calendar className="text-gray-400 w-5 h-5" />
+                  <span className="text-sm font-medium text-gray-700">إلى تاريخ:</span>
                 </div>
+                <div className="flex-1">
+                  <input
+                    type="date"
+                    value={dateTo}
+                    onChange={(e) => setDateTo(e.target.value)}
+                    min={dateFrom || undefined}
+                    className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
+                  />
+                </div>
+                {(dateFrom || dateTo) && (
+                  <button
+                    onClick={() => {
+                      setDateFrom("")
+                      setDateTo("")
+                    }}
+                    className="px-4 py-3 bg-gray-100 text-gray-700 rounded-xl hover:bg-gray-200 transition-colors text-sm font-medium"
+                  >
+                    مسح التاريخ
+                  </button>
+                )}
               </div>
             </div>
           </div>
