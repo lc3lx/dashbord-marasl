@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react"
 import DashboardLayout from "@/components/dashboard/DashboardLayout"
-import { Receipt, Plus, Search, Download, Eye, DollarSign, Calendar, Filter, ChevronLeft, ChevronRight } from 'lucide-react'
+import { Receipt, Plus, Search, Download, Eye, DollarSign, Calendar, Filter, ChevronLeft, ChevronRight, FileSpreadsheet } from 'lucide-react'
 import { motion } from "framer-motion"
 import { Input } from "@/components/ui/input"
 import { testInvoices } from "@/data/test-customers"
@@ -130,6 +130,102 @@ export default function InvoicesPage() {
     setCurrentPage(1)
   }, [searchTerm, selectedPeriod, selectedReport])
 
+  // دالة تصدير الفواتير إلى Excel
+  const exportToExcel = async () => {
+    try {
+      // استيراد مكتبة xlsx ديناميكياً
+      const XLSX = await import('xlsx')
+      
+      // إعداد البيانات للتصدير
+      const exportData = filteredInvoices.map((invoice) => ({
+        'رقم الفاتورة': invoice.invoiceNumber || '',
+        'اسم العميل': invoice.customerName || '',
+        'بريد العميل': invoice.customerEmail || '',
+        'رقم الشحنة': invoice.shipmentNumber || '',
+        'نوع الشحن': invoice.shipmentType || '',
+        'معرف الطلب': invoice.orderId || '',
+        'عنوان المرسل': invoice.senderAddress || '',
+        'عنوان المستلم': invoice.receiverAddress || '',
+        'مصدر الطلب': invoice.orderSource || '',
+        'شركة الشحن': invoice.shippingCompany || '',
+        'طريقة الدفع': invoice.paymentMethod || '',
+        'حالة الشحنة': invoice.shipmentStatus || '',
+        'حالة التتبع': invoice.trackingStatus || '',
+        'تاريخ الشحن': invoice.shipmentDate || '',
+        'تاريخ آخر تحديث': invoice.lastUpdateDate || '',
+        'قيمة الطلب': invoice.orderValue || 0,
+        'الوزن (كجم)': invoice.weight || 0,
+        'السعر الأساسي': invoice.basePolicyPrice || 0,
+        'السعر الإجمالي': invoice.totalPrice || 0,
+        'تكلفة الوزن الإضافي': invoice.additionalWeightCost || 0,
+        'رسوم الدفع عند الاستلام': invoice.codFees || 0,
+        'حالة الدفع عند الاستلام': invoice.codPaymentStatus || '',
+        'رسوم الاستلام': invoice.pickupFees || 0,
+        'رسوم الرجيع': invoice.returnFees || 0,
+        'رسوم الوقود': invoice.fuelFees || 0,
+        'قيمة الضريبة المضافة': invoice.vatAmount || 0,
+        'تكلفة التأمين': invoice.insuranceCost || 0,
+        'حالة الفاتورة': invoice.status || '',
+        'تاريخ الإنشاء': invoice.createdAt || '',
+        'تاريخ الاستحقاق': invoice.dueDate || '',
+      }))
+
+      // إنشاء workbook جديد
+      const wb = XLSX.utils.book_new()
+      
+      // إنشاء worksheet من البيانات
+      const ws = XLSX.utils.json_to_sheet(exportData)
+      
+      // ضبط عرض الأعمدة
+      const colWidths = [
+        { wch: 15 }, // رقم الفاتورة
+        { wch: 20 }, // اسم العميل
+        { wch: 25 }, // بريد العميل
+        { wch: 15 }, // رقم الشحنة
+        { wch: 15 }, // نوع الشحن
+        { wch: 15 }, // معرف الطلب
+        { wch: 30 }, // عنوان المرسل
+        { wch: 30 }, // عنوان المستلم
+        { wch: 15 }, // مصدر الطلب
+        { wch: 15 }, // شركة الشحن
+        { wch: 18 }, // طريقة الدفع
+        { wch: 15 }, // حالة الشحنة
+        { wch: 15 }, // حالة التتبع
+        { wch: 15 }, // تاريخ الشحن
+        { wch: 15 }, // تاريخ آخر تحديث
+        { wch: 12 }, // قيمة الطلب
+        { wch: 12 }, // الوزن
+        { wch: 12 }, // السعر الأساسي
+        { wch: 12 }, // السعر الإجمالي
+        { wch: 18 }, // تكلفة الوزن الإضافي
+        { wch: 20 }, // رسوم الدفع عند الاستلام
+        { wch: 20 }, // حالة الدفع عند الاستلام
+        { wch: 15 }, // رسوم الاستلام
+        { wch: 15 }, // رسوم الرجيع
+        { wch: 15 }, // رسوم الوقود
+        { wch: 18 }, // قيمة الضريبة المضافة
+        { wch: 15 }, // تكلفة التأمين
+        { wch: 15 }, // حالة الفاتورة
+        { wch: 15 }, // تاريخ الإنشاء
+        { wch: 15 }, // تاريخ الاستحقاق
+      ]
+      ws['!cols'] = colWidths
+
+      // إضافة worksheet إلى workbook
+      XLSX.utils.book_append_sheet(wb, ws, 'الفواتير')
+
+      // إنشاء اسم الملف مع التاريخ
+      const date = new Date().toISOString().split('T')[0]
+      const fileName = `الفواتير_${date}.xlsx`
+
+      // تصدير الملف
+      XLSX.writeFile(wb, fileName)
+    } catch (error) {
+      console.error('خطأ في تصدير الملف:', error)
+      alert('حدث خطأ أثناء تصدير الملف. يرجى التأكد من تثبيت مكتبة xlsx')
+    }
+  }
+
   return (
     <DashboardLayout>
       <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-100 p-6">
@@ -145,14 +241,26 @@ export default function InvoicesPage() {
                   <p className="text-gray-500">إدارة ومتابعة الفواتير</p>
                 </div>
               </div>
-              <motion.button
-                whileHover={{ scale: 1.05 }}
-                whileTap={{ scale: 0.95 }}
-                className="flex items-center gap-2 bg-gradient-to-r from-fuchsia-500 to-pink-600 text-white px-6 py-3 rounded-xl hover:shadow-lg transition-all"
-              >
-                <Plus className="w-5 h-5" />
-                إنشاء فاتورة
-              </motion.button>
+              <div className="flex items-center gap-3">
+                <motion.button
+                  whileHover={{ scale: 1.05 }}
+                  whileTap={{ scale: 0.95 }}
+                  onClick={exportToExcel}
+                  disabled={filteredInvoices.length === 0 || loading}
+                  className="flex items-center gap-2 bg-gradient-to-r from-emerald-500 to-teal-600 text-white px-6 py-3 rounded-xl hover:shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <FileSpreadsheet className="w-5 h-5" />
+                  تصدير Excel
+                </motion.button>
+                <motion.button
+                  whileHover={{ scale: 1.05 }}
+                  whileTap={{ scale: 0.95 }}
+                  className="flex items-center gap-2 bg-gradient-to-r from-fuchsia-500 to-pink-600 text-white px-6 py-3 rounded-xl hover:shadow-lg transition-all"
+                >
+                  <Plus className="w-5 h-5" />
+                  إنشاء فاتورة
+                </motion.button>
+              </div>
             </div>
           </div>
 
