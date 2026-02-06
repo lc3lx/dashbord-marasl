@@ -12,7 +12,7 @@ import {
   CheckCircle,
   XCircle,
   Loader2,
-  Eye,
+  Printer,
   Edit,
   Trash2,
   RefreshCw,
@@ -60,6 +60,10 @@ interface Shipment {
     buildingNumber?: string
     additionalNumber?: string
   }
+  redboxResponse?: { label?: string; trackingNumber?: string }
+  aramexResponse?: { labelURL?: string; trackingNumber?: string }
+  omniclamaResponse?: { label?: string; trackingNumber?: string }
+  smsaResponse?: { label?: string; trackingNumber?: string }
 }
 
 const filterStatusOptions = [
@@ -119,6 +123,33 @@ const resolveStatusKey = (status?: string) => {
 }
 const resolveTrackingNumber = (shipment: Shipment) =>
   shipment.trackingId || shipment.companyshipmentid || "غير متوفر"
+
+function getLabelUrl(shipment: Shipment): string | null {
+  const company = (shipment?.shapmentCompany || "").toLowerCase()
+  if (company === "redbox" && shipment?.redboxResponse?.label) return shipment.redboxResponse.label
+  if (company === "aramex" && shipment?.aramexResponse?.labelURL) return shipment.aramexResponse.labelURL
+  if (company === "omniclama" && shipment?.omniclamaResponse?.label) return shipment.omniclamaResponse.label
+  if (company === "smsa" && shipment?.smsaResponse?.label) return shipment.smsaResponse.label
+  return null
+}
+
+function downloadBase64File(base64: string, fileName: string) {
+  const arr = base64.split(",")
+  const mime = arr[0].match(/:(.*?);/)?.[1] || "application/pdf"
+  const bstr = atob(arr[arr.length - 1])
+  let n = bstr.length
+  const u8arr = new Uint8Array(n)
+  while (n--) u8arr[n] = bstr.charCodeAt(n)
+  const blob = new Blob([u8arr], { type: mime })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement("a")
+  a.href = url
+  a.download = fileName
+  document.body.appendChild(a)
+  a.click()
+  a.remove()
+  URL.revokeObjectURL(url)
+}
 const resolveCustomerName = (shipment: Shipment) =>
   shipment.customerName ||
   `${shipment.customerId?.firstName || ""} ${shipment.customerId?.lastName || ""}`.trim() ||
@@ -213,9 +244,22 @@ export default function ShipmentsPage() {
     setIsRefreshing(false)
   }
 
-  const handleViewDetails = (shipment: Shipment) => {
-    setSelectedShipment(shipment)
-    setShowDetailsModal(true)
+  const handlePrintLabel = (shipment: Shipment) => {
+    const labelUrl = getLabelUrl(shipment)
+    const company = (shipment?.shapmentCompany || "").toLowerCase()
+    if (company === "smsa" && shipment?.smsaResponse?.label) {
+      downloadBase64File(
+        shipment.smsaResponse.label,
+        `smsa-label-${shipment._id || "label"}.pdf`
+      )
+      return
+    }
+    if (labelUrl) {
+      if (labelUrl.startsWith("data:") || labelUrl.startsWith("blob:")) return
+      window.open(labelUrl, "_blank", "noopener,noreferrer")
+      return
+    }
+    alert("البوليصة غير متوفرة لهذه الشحنة")
   }
 
   const handleEditStatus = (shipment: Shipment) => {
@@ -655,11 +699,11 @@ export default function ShipmentsPage() {
                               <motion.button
                                 whileHover={{ scale: 1.1 }}
                                 whileTap={{ scale: 0.9 }}
-                                onClick={() => handleViewDetails(shipment)}
+                                onClick={() => handlePrintLabel(shipment)}
                                 className="p-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors"
-                                title="عرض التفاصيل"
+                                title="طباعة البوليصة"
                               >
-                                <Eye className="w-4 h-4" />
+                                <Printer className="w-4 h-4" />
                               </motion.button>
                               <motion.button
                                 whileHover={{ scale: 1.1 }}
