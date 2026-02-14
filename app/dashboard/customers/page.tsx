@@ -6,8 +6,7 @@ import { UserCheck, Plus, Search, Eye, Mail, Phone, Wallet, CheckCircle, XCircle
 import { motion, AnimatePresence } from "framer-motion"
 import AdvancedFilterPanel from "@/components/filters/AdvancedFilterPanel"
 import EnhancedPrintButton from "@/components/print/EnhancedPrintButton11"
-import { usersAPI } from "@/lib/api"
-import { ordersAPI } from "@/lib/api"
+import { usersAPI, adminShipmentsAPI } from "@/lib/api"
 
 export default function CustomersPage() {
   const [searchTerm, setSearchTerm] = useState("")
@@ -19,6 +18,7 @@ export default function CustomersPage() {
   const [showDetailsModal, setShowDetailsModal] = useState(false)
   const [showEditModal, setShowEditModal] = useState(false)
   const [showOrdersModal, setShowOrdersModal] = useState(false)
+  const [shipmentsLoading, setShipmentsLoading] = useState(false)
   const [editFormData, setEditFormData] = useState({
     name: "",
     email: "",
@@ -91,6 +91,7 @@ export default function CustomersPage() {
         customer.updatedAt ??
         customer.createdAt ??
         null,
+      createdAt: customer.createdAt ?? customer.created_at ?? null,
     }
   }
 
@@ -121,11 +122,11 @@ export default function CustomersPage() {
     }
   }
 
-  const fetchCustomerOrders = async (customerId: string) => {
+  const fetchCustomerShipments = async (customerId: string) => {
     try {
-      const response = await ordersAPI.getByCustomerId(customerId)
-      // Assuming the response is an array of orders
-      return response.data || response || []
+      const response = await adminShipmentsAPI.getAll({ userId: customerId, limit: 100 })
+      const data = response?.data ?? response
+      return Array.isArray(data) ? data : []
     } catch (err: any) {
       console.error(`[v0] خطأ في جلب شحنات العميل ${customerId}:`, err)
       setError(err.message || "فشل في جلب بيانات الشحنات")
@@ -269,16 +270,20 @@ export default function CustomersPage() {
     }
   }
 
-  const handleViewOrders = async () => {
+  const handleViewShipments = async () => {
     if (selectedCustomer) {
-      const orders = await fetchCustomerOrders(selectedCustomer.id)
-      setSelectedCustomer({ ...selectedCustomer, orders: orders }) // Assuming orders is an array of orders
-      setShowOrdersModal(true)
+      setShipmentsLoading(true)
+      try {
+        const shipments = await fetchCustomerShipments(selectedCustomer.id)
+        setSelectedCustomer({ ...selectedCustomer, shipments })
+        setShowOrdersModal(true)
+      } finally {
+        setShipmentsLoading(false)
+      }
     }
   }
 
-  // سيتم استبدال البيانات الوهمية ببيانات حقيقية من API
-  const customerOrders = selectedCustomer?.orders || []
+  const customerShipments = selectedCustomer?.shipments || []
 
   return (
     <DashboardLayout>
@@ -661,6 +666,7 @@ export default function CustomersPage() {
         <AnimatePresence>
           {showDetailsModal && selectedCustomer && (
             <motion.div
+              key="details-modal"
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
@@ -764,7 +770,17 @@ export default function CustomersPage() {
                       </div>
                       <div>
                         <p className="text-xs text-gray-500">تاريخ التسجيل</p>
-                        <p className="text-sm font-medium text-gray-900">{new Date().toLocaleDateString("ar-SA")}</p>
+                        <p className="text-sm font-medium text-gray-900">
+                          {selectedCustomer.createdAt
+                            ? new Date(selectedCustomer.createdAt).toLocaleDateString("ar-SA", {
+                                year: "numeric",
+                                month: "long",
+                                day: "numeric",
+                                hour: "2-digit",
+                                minute: "2-digit",
+                              })
+                            : "غير متوفر"}
+                        </p>
                       </div>
                     </div>
                     <div className="flex items-center gap-3">
@@ -804,11 +820,12 @@ export default function CustomersPage() {
                     <motion.button
                       whileHover={{ scale: 1.02 }}
                       whileTap={{ scale: 0.98 }}
-                      onClick={handleViewOrders}
-                      className="flex-1 bg-gray-100 text-gray-700 py-3 rounded-xl font-medium hover:bg-gray-200 transition-all flex items-center justify-center gap-2"
+                      onClick={handleViewShipments}
+                      disabled={shipmentsLoading}
+                      className="flex-1 bg-gray-100 text-gray-700 py-3 rounded-xl font-medium hover:bg-gray-200 transition-all flex items-center justify-center gap-2 disabled:opacity-70"
                     >
-                      <Package className="w-4 h-4" />
-                      عرض الشحنات
+                      {shipmentsLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Package className="w-4 h-4" />}
+                      {shipmentsLoading ? "جاري التحميل..." : "عرض الشحنات"}
                     </motion.button>
                   </div>
                 </div>
@@ -818,6 +835,7 @@ export default function CustomersPage() {
 
           {showEditModal && selectedCustomer && (
             <motion.div
+              key="edit-modal"
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
@@ -1085,6 +1103,7 @@ export default function CustomersPage() {
 
           {showOrdersModal && selectedCustomer && (
             <motion.div
+              key="shipments-modal"
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
@@ -1121,65 +1140,100 @@ export default function CustomersPage() {
                 </div>
 
                 <div className="p-6">
-                  {customerOrders.length === 0 ? (
+                  {customerShipments.length === 0 ? (
                     <div className="text-center py-12">
                       <Package className="w-16 h-16 text-gray-300 mx-auto mb-4" />
                       <p className="text-gray-500">لا توجد شحنات لهذا العميل</p>
                     </div>
                   ) : (
                     <div className="space-y-4">
-                      {customerOrders.map((order) => (
-                        <motion.div
-                          key={order.id}
-                          initial={{ opacity: 0, y: 20 }}
-                          animate={{ opacity: 1, y: 0 }}
-                          className="bg-gray-50 rounded-xl p-4 hover:shadow-md transition-all"
-                        >
-                          <div className="flex items-center justify-between mb-3">
-                            <div className="flex items-center gap-3">
-                              <div className="w-12 h-12 bg-gradient-to-br from-cyan-500 to-blue-600 rounded-lg flex items-center justify-center">
-                                <Package className="w-6 h-6 text-white" />
+                      {customerShipments.map((shipment: any, index: number) => {
+                        const status = shipment.shipmentstates || shipment.status || "PENDING"
+                        const statusLabel =
+                          status === "Delivered"
+                            ? "تم التسليم"
+                            : status === "IN_TRANSIT"
+                              ? "قيد التوصيل"
+                              : status === "READY_FOR_PICKUP"
+                                ? "جاهز للاستلام"
+                                : status === "Canceled"
+                                  ? "ملغي"
+                                  : status === "Returned" || status === "RETURNED"
+                                    ? "راجع"
+                                    : "قيد المعالجة"
+                        const statusClass =
+                          status === "Delivered"
+                            ? "bg-green-100 text-green-700"
+                            : status === "IN_TRANSIT" || status === "READY_FOR_PICKUP"
+                              ? "bg-blue-100 text-blue-700"
+                              : status === "Canceled"
+                                ? "bg-red-100 text-red-700"
+                                : "bg-yellow-100 text-yellow-700"
+                        const total =
+                          Number(shipment.totalprice) ?? Number(shipment.ordervalue) ?? Number(shipment.totalAmount) ?? 0
+                        const dateStr = shipment.createdAt
+                          ? new Date(shipment.createdAt).toLocaleDateString("ar-SA", {
+                              year: "numeric",
+                              month: "short",
+                              day: "numeric",
+                            })
+                          : "—"
+                        return (
+                          <motion.div
+                            key={shipment._id ?? shipment.id ?? shipment.trackingId ?? `shipment-${index}`}
+                            initial={{ opacity: 0, y: 20 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            className="bg-gray-50 rounded-xl p-4 hover:shadow-md transition-all"
+                          >
+                            <div className="flex items-center justify-between mb-3">
+                              <div className="flex items-center gap-3">
+                                <div className="w-12 h-12 bg-gradient-to-br from-cyan-500 to-blue-600 rounded-lg flex items-center justify-center">
+                                  <Package className="w-6 h-6 text-white" />
+                                </div>
+                                <div>
+                                  <h3 className="font-bold text-gray-900">
+                                    شحنة #{shipment.trackingId || shipment.trackingNumber || shipment._id?.slice(-6) || "—"}
+                                  </h3>
+                                  <p className="text-sm text-gray-500">{dateStr}</p>
+                                </div>
                               </div>
-                              <div>
-                                <h3 className="font-bold text-gray-900">طلب #{order.id}</h3>
-                                <p className="text-sm text-gray-500">{order.date}</p>
+                              <div className={`px-3 py-1 rounded-lg text-sm font-medium ${statusClass}`}>
+                                {statusLabel}
                               </div>
                             </div>
-                            <div
-                              className={`px-3 py-1 rounded-lg text-sm font-medium ${
-                                order.status === "مكتمل"
-                                  ? "bg-green-100 text-green-700"
-                                  : order.status === "قيد التوصيل"
-                                    ? "bg-blue-100 text-blue-700"
-                                    : "bg-yellow-100 text-yellow-700"
-                              }`}
-                            >
-                              {order.status}
-                            </div>
-                          </div>
 
-                          <div className="grid grid-cols-2 gap-4">
-                            <div className="flex items-center gap-2">
-                              <ShoppingBag className="w-4 h-4 text-gray-400" />
-                              <span className="text-sm text-gray-600">{order.items} منتجات</span>
+                            <div className="grid grid-cols-2 gap-4">
+                              {shipment.shapmentCompany && (
+                                <div className="flex items-center gap-2">
+                                  <Package className="w-4 h-4 text-gray-400" />
+                                  <span className="text-sm text-gray-600">{shipment.shapmentCompany}</span>
+                                </div>
+                              )}
+                              <div className="flex items-center gap-2">
+                                <DollarSign className="w-4 h-4 text-gray-400" />
+                                <span className="text-sm font-semibold text-gray-900">{total.toLocaleString("ar-SA")} ر.س</span>
+                              </div>
                             </div>
-                            <div className="flex items-center gap-2">
-                              <DollarSign className="w-4 h-4 text-gray-400" />
-                              <span className="text-sm font-semibold text-gray-900">{order.total} ر.س</span>
-                            </div>
-                          </div>
-                        </motion.div>
-                      ))}
+                          </motion.div>
+                        )
+                      })}
 
                       <div className="bg-gradient-to-r from-cyan-50 to-blue-50 rounded-xl p-4 mt-6">
                         <div className="flex items-center justify-between">
                           <span className="text-gray-700 font-medium">إجمالي الشحنات</span>
-                          <span className="text-2xl font-bold text-cyan-600">{customerOrders.length}</span>
+                          <span className="text-2xl font-bold text-cyan-600">{customerShipments.length}</span>
                         </div>
                         <div className="flex items-center justify-between mt-2">
                           <span className="text-gray-700 font-medium">إجمالي المبلغ</span>
                           <span className="text-2xl font-bold text-blue-600">
-                            {customerOrders.reduce((sum, order) => sum + order.total, 0)} ر.س
+                            {customerShipments
+                              .reduce(
+                                (sum: number, s: any) =>
+                                  sum + (Number(s.totalprice) ?? Number(s.ordervalue) ?? Number(s.totalAmount) ?? 0),
+                                0,
+                              )
+                              .toLocaleString("ar-SA")}{" "}
+                            ر.س
                           </span>
                         </div>
                       </div>
