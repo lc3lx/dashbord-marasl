@@ -323,13 +323,13 @@ export const dashboardAPI = {
 
 export const usersAPI = {
   getAll: (params?: any) => apiClient.get("/api/admin/users", params),
-  getById: (id: string) => apiClient.get(`/api/customer/users/${id}`),
+  getById: (id: string) => apiClient.get(`/api/admin/users/${id}`),
   create: (data: any) => apiClient.post("/api/customer/users", data),
   update: (id: string, data: any) =>
     apiClient.post(`/api/customer/users/${id}`, data),
-  delete: (id: string) => apiClient.post(`/api/customer/users/${id}`, {}),
+  delete: (id: string) => apiClient.delete(`/api/admin/users/${id}`),
   updateStatus: (id: string, status: string) =>
-    apiClient.post(`/api/customer/users/${id}/status`, { status }),
+    apiClient.put(`/api/admin/users/${id}/status`, { status }),
 };
 
 export const ordersAPI = {

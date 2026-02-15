@@ -270,14 +270,16 @@ export default function UsersPage() {
   }
 
   const handleDeleteUser = async (user: any) => {
-    if (confirm(`هل أنت متأكد من حذف المستخدم ${user.firstName || user.name}؟`)) {
-      try {
-        // await usersAPI.delete(user._id || user.id)
-
-        setUsers(users.filter((u) => (u._id || u.id) !== (user._id || user.id)))
-      } catch (err) {
-        console.error("Error deleting user:", err)
-      }
+    const id = user._id || user.id
+    if (!id) return
+    if (!confirm(`هل أنت متأكد من حذف المستخدم ${user.firstName || user.name || user.email}؟`)) return
+    try {
+      await usersAPI.delete(String(id))
+      setUsers((prev) => prev.filter((u) => (u._id || u.id) !== id))
+      setTotalUsers((prev) => Math.max(0, prev - 1))
+    } catch (err: any) {
+      console.error("Error deleting user:", err)
+      alert(err?.message || "فشل حذف المستخدم")
     }
   }
 
