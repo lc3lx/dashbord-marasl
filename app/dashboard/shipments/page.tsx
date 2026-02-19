@@ -22,6 +22,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Calendar,
+  Eye,
 } from "lucide-react"
 import { motion, AnimatePresence } from "framer-motion"
 import { useState, useEffect } from "react"
@@ -64,6 +65,12 @@ interface Shipment {
   aramexResponse?: { labelURL?: string; trackingNumber?: string }
   omniclamaResponse?: { label?: string; trackingNumber?: string }
   smsaResponse?: { label?: string; trackingNumber?: string }
+  pickupRequest?: {
+    success?: boolean
+    pickupId?: string
+    pickupGUID?: string
+    pickup_guid?: string
+  }
 }
 
 const filterStatusOptions = [
@@ -260,6 +267,11 @@ export default function ShipmentsPage() {
       return
     }
     alert("البوليصة غير متوفرة لهذه الشحنة")
+  }
+
+  const handleViewDetails = (shipment: Shipment) => {
+    setSelectedShipment(shipment)
+    setShowDetailsModal(true)
   }
 
   const handleEditStatus = (shipment: Shipment) => {
@@ -699,6 +711,15 @@ export default function ShipmentsPage() {
                               <motion.button
                                 whileHover={{ scale: 1.1 }}
                                 whileTap={{ scale: 0.9 }}
+                                onClick={() => handleViewDetails(shipment)}
+                                className="p-2 bg-gray-500 text-white rounded-lg hover:bg-gray-600 transition-colors"
+                                title="عرض التفاصيل"
+                              >
+                                <Eye className="w-4 h-4" />
+                              </motion.button>
+                              <motion.button
+                                whileHover={{ scale: 1.1 }}
+                                whileTap={{ scale: 0.9 }}
                                 onClick={() => handlePrintLabel(shipment)}
                                 className="p-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors"
                                 title="طباعة البوليصة"
@@ -809,6 +830,29 @@ export default function ShipmentsPage() {
                         })}
                       </p>
                     </div>
+                    {/* أرامكس: رقم طلب الاستلام و GUID */}
+                    {selectedShipment.shapmentCompany?.toLowerCase() === "aramex" &&
+                      selectedShipment.pickupRequest?.success && (
+                        <>
+                          <div className="bg-gray-50 p-4 rounded-xl">
+                            <p className="text-sm text-gray-500 mb-1">رقم طلب الاستلام</p>
+                            <p className="font-bold text-gray-900">
+                              {selectedShipment.pickupRequest.pickupId ?? "—"}
+                            </p>
+                          </div>
+                          <div className="bg-gray-50 p-4 rounded-xl col-span-2">
+                            <p className="text-sm text-gray-500 mb-1">GUID</p>
+                            <p
+                              className="font-medium text-gray-900 text-xs break-all"
+                              title={selectedShipment.pickupRequest.pickupGUID ?? selectedShipment.pickupRequest.pickup_guid ?? ""}
+                            >
+                              {selectedShipment.pickupRequest.pickupGUID ??
+                                selectedShipment.pickupRequest.pickup_guid ??
+                                "—"}
+                            </p>
+                          </div>
+                        </>
+                      )}
                   </div>
                 </div>
               </motion.div>
