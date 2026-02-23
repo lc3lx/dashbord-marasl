@@ -625,6 +625,7 @@ export default function ShipmentsPage() {
                         <th className="px-6 py-4 text-right text-sm font-bold text-white">الوجهة</th>
                         <th className="px-6 py-4 text-right text-sm font-bold text-white">شركة الشحن</th>
                         <th className="px-6 py-4 text-right text-sm font-bold text-white">بريد العميل</th>
+                        <th className="px-6 py-4 text-right text-sm font-bold text-white">نوع الشحن</th>
                         <th className="px-6 py-4 text-right text-sm font-bold text-white">الحالة</th>
                         <th className="px-6 py-4 text-right text-sm font-bold text-white">قيمة الطلب</th>
                         <th className="px-6 py-4 text-right text-sm font-bold text-white">الإجمالي</th>
@@ -684,6 +685,20 @@ export default function ShipmentsPage() {
                               <Mail className="w-4 h-4 text-purple-600 flex-shrink-0" />
                               <span className="text-sm">{customerEmail}</span>
                             </div>
+                          </td>
+                          <td className="px-6 py-4">
+                            <span
+                              className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-sm font-medium ${
+                                (shipment.paymentMathod || "").toUpperCase() === "COD"
+                                  ? "bg-amber-100 text-amber-800 border border-amber-200"
+                                  : "bg-sky-100 text-sky-800 border border-sky-200"
+                              }`}
+                            >
+                              <CreditCard className="w-4 h-4" />
+                              {(shipment.paymentMathod || "").toUpperCase() === "COD"
+                                ? "دفع عند الاستلام"
+                                : "مدفوع مسبقًا"}
+                            </span>
                           </td>
                           <td className="px-6 py-4">{getStatusBadge(resolveStatusValue(shipment))}</td>
                           <td className="px-6 py-4">
